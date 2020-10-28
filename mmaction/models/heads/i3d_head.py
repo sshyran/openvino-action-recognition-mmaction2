@@ -22,35 +22,24 @@ class I3DHead(BaseHead):
     """
 
     def __init__(self,
-                 num_classes,
-                 in_channels,
-                 loss_cls=dict(type='CrossEntropyLoss'),
                  spatial_type='avg',
-                 dropout_ratio=0.5,
                  init_std=0.01,
                  **kwargs):
-        super().__init__(num_classes, in_channels, loss_cls, **kwargs)
+        super().__init__(**kwargs)
 
-        self.spatial_type = spatial_type
-        self.dropout_ratio = dropout_ratio
         self.init_std = init_std
-        if self.dropout_ratio != 0:
-            self.dropout = nn.Dropout(p=self.dropout_ratio)
-        else:
-            self.dropout = None
-        self.fc_cls = nn.Linear(self.in_channels, self.num_classes)
 
-        if self.spatial_type == 'avg':
-            # use `nn.AdaptiveAvgPool3d` to adaptively match the in_channels.
+        self.avg_pool = None
+        if spatial_type == 'avg':
             self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        else:
-            self.avg_pool = None
+
+        self.fc_cls = nn.Linear(self.in_channels, self.num_classes)
 
     def init_weights(self):
         """Initiate the parameters from scratch."""
         normal_init(self.fc_cls, std=self.init_std)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         """Defines the computation performed at every call.
 
         Args:

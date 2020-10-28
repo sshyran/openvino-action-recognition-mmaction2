@@ -20,7 +20,7 @@ class EvalHook(Hook):
         gpu_collect (bool): Whether to use gpu or cpu to collect results.
             Default: False.
         save_best (bool): Whether to save best checkpoint during evaluation.
-            Default: True.
+            Default: False.
         key_indicator (str | None): Key indicator to measure the best
             checkpoint during evaluation when ``save_best`` is set to True.
             Options are the evaluation metrics to the test dataset. e.g.,
@@ -42,8 +42,8 @@ class EvalHook(Hook):
                  dataloader,
                  interval=1,
                  gpu_collect=False,
-                 save_best=True,
-                 key_indicator='top1_acc',
+                 save_best=False,
+                 key_indicator=None,
                  rule=None,
                  **eval_kwargs):
         if not isinstance(dataloader, DataLoader):
@@ -80,6 +80,7 @@ class EvalHook(Hook):
         if self.save_best:
             self.compare_func = self.rule_map[self.rule]
             self.best_score = self.init_value_map[self.rule]
+            self.best_ckpt = None
 
         self.best_json = dict()
 
@@ -88,8 +89,7 @@ class EvalHook(Hook):
         if not self.every_n_epochs(runner, self.interval):
             return
 
-        current_ckpt_path = osp.join(runner.work_dir,
-                                     f'epoch_{runner.epoch + 1}.pth')
+        current_ckpt_path = osp.join(runner.work_dir, f'epoch_{runner.epoch + 1}.pth')
         json_path = osp.join(runner.work_dir, 'best.json')
 
         if osp.exists(json_path) and len(self.best_json) == 0:
@@ -101,10 +101,9 @@ class EvalHook(Hook):
         from mmaction.apis import single_gpu_test
         results = single_gpu_test(runner.model, self.dataloader)
         key_score = self.evaluate(runner, results)
-        if (self.save_best and self.compare_func(key_score, self.best_score)):
+        if self.save_best and self.compare_func(key_score, self.best_score):
             self.best_score = key_score
-            self.logger.info(
-                f'Now best checkpoint is epoch_{runner.epoch + 1}.pth')
+            self.logger.info(f'Now best checkpoint is epoch_{runner.epoch + 1}.pth')
             self.best_json['best_score'] = self.best_score
             self.best_json['best_ckpt'] = current_ckpt_path
             self.best_json['key_indicator'] = self.key_indicator
@@ -118,10 +117,13 @@ class EvalHook(Hook):
             results (list): Output results.
         """
         eval_res = self.dataloader.dataset.evaluate(
-            results, logger=runner.logger, **self.eval_kwargs)
+            results, logger=runner.logger, **self.eval_kwargs
+        )
+
         for name, val in eval_res.items():
             runner.log_buffer.output[name] = val
         runner.log_buffer.ready = True
+
         if self.key_indicator is not None:
             return eval_res[self.key_indicator]
         else:
@@ -158,11 +160,10 @@ class DistEvalHook(EvalHook):
         if not self.every_n_epochs(runner, self.interval):
             return
 
-        current_ckpt_path = osp.join(runner.work_dir,
-                                     f'epoch_{runner.epoch + 1}.pth')
+        current_ckpt_path = osp.join(runner.work_dir, f'epoch_{runner.epoch + 1}.pth')
         json_path = osp.join(runner.work_dir, 'best.json')
 
-        if osp.exists(json_path) and len(self.best_json) == 0:
+        if runner.rank == 0 and osp.exists(json_path) and len(self.best_json) == 0:
             self.best_json = mmcv.load(json_path)
             self.best_score = self.best_json['best_score']
             self.best_ckpt = self.best_json['best_ckpt']
@@ -173,15 +174,15 @@ class DistEvalHook(EvalHook):
             runner.model,
             self.dataloader,
             tmpdir=osp.join(runner.work_dir, '.eval_hook'),
-            gpu_collect=self.gpu_collect)
+            gpu_collect=self.gpu_collect
+        )
+
         if runner.rank == 0:
             print('\n')
             key_score = self.evaluate(runner, results)
-            if (self.save_best
-                    and self.compare_func(key_score, self.best_score)):
+            if self.save_best and self.compare_func(key_score, self.best_score):
                 self.best_score = key_score
-                self.logger.info(
-                    f'Now best checkpoint is epoch_{runner.epoch + 1}.pth')
+                self.logger.info(f'Now best checkpoint is epoch_{runner.epoch + 1}.pth')
                 self.best_json['best_score'] = self.best_score
                 self.best_json['best_ckpt'] = current_ckpt_path
                 self.best_json['key_indicator'] = self.key_indicator

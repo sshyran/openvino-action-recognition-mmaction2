@@ -8,6 +8,30 @@ import torch.nn.functional as F
 from mmcv.runner import auto_fp16
 
 from .. import builder
+from ...core.ops import rsc
+
+
+class EvalModeSetter:
+    def __init__(self, module, m_type):
+        self.module = module
+        self.modes_storage = dict()
+
+        self.m_types = m_type
+        if not isinstance(self.m_types, (tuple, list)):
+            self.m_types = [self.m_types]
+
+    def __enter__(self):
+        for name, module in self.module.named_modules():
+            matched = any(isinstance(module, m_type) for m_type in self.m_types)
+            if matched:
+                self.modes_storage[name] = module.training
+                module.train(mode=False)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for name, module in self.module.named_modules():
+            if name in self.modes_storage:
+                module.train(mode=self.modes_storage[name])
 
 
 class BaseRecognizer(nn.Module, metaclass=ABCMeta):
@@ -16,34 +40,90 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
     All recognizers should subclass it.
     All subclass should overwrite:
 
-    - Methods:``forward_train``, supporting to forward when training.
-    - Methods:``forward_test``, supporting to forward when testing.
+    - Methods:``reshape_images``, supporting the input reshape.
 
     Args:
         backbone (dict): Backbone modules to extract feature.
+        reducer (dict): Spatial-temporal modules to reduce feature. Default: None.
         cls_head (dict): Classification head to process feature.
+        class_sizes (list): Number of samples for each class in each task. Default: None.
         train_cfg (dict): Config for training. Default: None.
         test_cfg (dict): Config for testing. Default: None.
+        bn_eval (bool): Whether to switch all BN in eval mode. Default: False.
+        bn_frozen (bool): Whether to disable backprop for all BN. Default: False.
     """
 
-    def __init__(self, backbone, cls_head, train_cfg=None, test_cfg=None):
+    def __init__(self,
+                 backbone,
+                 cls_head,
+                 reducer=None,
+                 class_sizes=None,
+                 train_cfg=None,
+                 test_cfg=None,
+                 bn_eval=False,
+                 bn_frozen=False):
         super().__init__()
-        self.backbone = builder.build_backbone(backbone)
-        self.cls_head = builder.build_head(cls_head)
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+        self.bn_eval = bn_eval
+        self.bn_frozen = bn_frozen
+        self.fp16_enabled = False
+        self.multi_head = class_sizes is not None and len(class_sizes) > 1
+        self.with_self_challenging = hasattr(train_cfg, 'self_challenging') and train_cfg.self_challenging.enable
+        self.with_clip_mixing = hasattr(train_cfg, 'clip_mixing') and train_cfg.clip_mixing.enable
+
+        self.backbone = builder.build_backbone(backbone)
+        self.spatial_temporal_module = builder.build_reducer(reducer)
+        self.cls_head = builder.build_head(cls_head, class_sizes)
+
+        if self.with_clip_mixing:
+            self.clip_mixing_loss = builder.build_loss(dict(
+                type='ClipMixingLoss',
+                mode=train_cfg.clip_mixing.mode,
+                loss_weight=train_cfg.clip_mixing.weight
+            ))
+
         self.init_weights()
 
-        self.fp16_enabled = False
-
     def init_weights(self):
-        """Initialize the model network weights."""
-        self.backbone.init_weights()
-        self.cls_head.init_weights()
+        for module in self.children():
+            if hasattr(module, 'init_weights'):
+                module.init_weights()
+
+        heads = self.cls_head if self.multi_head else [self.cls_head]
+        for head in heads:
+            if hasattr(head, 'init_weights'):
+                head.init_weights()
+
+    def update_state(self, *args, **kwargs):
+        for module in self.children():
+            if hasattr(module, 'update_state'):
+                module.update_state(*args, **kwargs)
+
+        heads = self.cls_head if self.multi_head else [self.cls_head]
+        for head in heads:
+            if hasattr(head, 'update_state'):
+                head.update_state(*args, **kwargs)
 
     @auto_fp16()
-    def extract_feat(self, imgs):
+    def _forward_module_train(self, module, x, losses, squeeze=False, **kwargs):
+        if module is None:
+            y = x
+        elif hasattr(module, 'loss'):
+            y, extra_data = module(x, return_extra_data=True)
+            losses.update(module.loss(**extra_data, **kwargs))
+        else:
+            y = module(x)
+
+        if squeeze and isinstance(y, (list, tuple)):
+            assert len(y) == 1
+            y = y[0]
+
+        return y
+
+    @auto_fp16()
+    def _extract_features_test(self, imgs):
         """Extract features through a backbone.
 
         Args:
@@ -52,10 +132,19 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         Returns:
             torch.tensor: The extracted features.
         """
-        x = self.backbone(imgs)
-        return x
 
-    def average_clip(self, cls_score):
+        y = self.backbone(imgs)
+
+        if isinstance(y, (list, tuple)):
+            assert len(y) == 1
+            y = y[0]
+
+        if self.spatial_temporal_module is not None:
+            y = self.spatial_temporal_module(y)
+
+        return y
+
+    def _average_clip(self, cls_score):
         """Averaging class score over multiple clips.
 
         Using different averaging types ('score' or 'prob' or None,
@@ -81,21 +170,179 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             cls_score = F.softmax(cls_score, dim=1).mean(dim=0, keepdim=True)
         elif average_clips == 'score':
             cls_score = cls_score.mean(dim=0, keepdim=True)
+
         return cls_score
 
     @abstractmethod
-    def forward_train(self, imgs, labels):
-        """Defines the computation performed at every call when training."""
+    def reshape_input(self, imgs, masks=None):
         pass
 
     @abstractmethod
-    def forward_test(self, imgs):
-        """Defines the computation performed at every call when evaluation and
-        testing."""
+    def reshape_input_inference(self, imgs, masks=None):
         pass
 
     @staticmethod
-    def _parse_losses(losses):
+    def _infer_head(head_module, *args, **kwargs):
+        out = head_module(*args, **kwargs)
+
+        if isinstance(out, (tuple, list)):
+            assert len(out) == 2
+            return out
+        else:
+            return out, None
+
+    @staticmethod
+    def _filter(x, mask):
+        if x is None:
+            return None
+        elif mask is None:
+            return x
+        else:
+            return x[mask]
+
+    def forward_train(self, imgs, labels, dataset_id=None, attention_mask=None, **kwargs):
+        imgs, attention_mask, head_args = self.reshape_input(imgs, attention_mask)
+        losses = dict()
+
+        num_clips = imgs.size(0) // labels.size(0)
+        if num_clips > 1:
+            labels = labels.view(-1, 1).repeat(1, num_clips).view(-1)
+            if dataset_id is not None:
+                dataset_id = dataset_id.view(-1, 1).repeat(1, num_clips).view(-1)
+
+        features = self._forward_module_train(
+            self.backbone, imgs, losses,
+            squeeze=True, attention_mask=attention_mask
+        )
+        features = self._forward_module_train(
+            self.spatial_temporal_module, features, losses
+        )
+
+        if self.with_self_challenging and not features.requires_grad:
+            features.requires_grad = True
+
+        heads = self.cls_head if self.multi_head else [self.cls_head]
+        for head_id, cl_head in enumerate(heads):
+            trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
+
+            trg_labels = self._filter(labels, trg_mask)
+            trg_num_samples = trg_labels.numel()
+            if trg_num_samples == 0:
+                continue
+
+            if self.with_self_challenging:
+                trg_features = self._filter(features, trg_mask)
+                trg_scores, _ = self._infer_head(
+                    cl_head,
+                    *([trg_features] + head_args),
+                    labels=trg_labels.view(-1)
+                )
+
+                trg_features = rsc(
+                    trg_features,
+                    trg_scores,
+                    trg_labels, 1.0 - self.train_cfg.self_challenging.drop_p
+                )
+
+                with EvalModeSetter(cl_head, m_type=(nn.BatchNorm2d, nn.BatchNorm3d)):
+                    trg_scores, trg_norm_embd = self._infer_head(
+                        cl_head,
+                        *([trg_features] + head_args),
+                        labels=trg_labels.view(-1),
+                        return_extra_data=True
+                    )
+            else:
+                all_scores, all_norm_embd = self._infer_head(
+                    cl_head,
+                    *([features] + head_args),
+                    labels=labels.view(-1),
+                    return_extra_data=True
+                )
+
+                trg_scores = self._filter(all_scores, trg_mask)
+                trg_norm_embd = self._filter(all_norm_embd, trg_mask)
+
+            # main head loss
+            losses.update(cl_head.loss(
+                cls_score=trg_scores,
+                labels=trg_labels.view(-1),
+                norm_embd=trg_norm_embd,
+                name=str(head_id)
+            ))
+
+            # clip mixing loss
+            if self.with_clip_mixing:
+                losses['loss/clip_mix'] = self.clip_mixing_loss(
+                    trg_scores, trg_norm_embd, num_clips, cl_head.last_scale
+                )
+
+        return losses
+
+    def forward_test(self, imgs, dataset_id=None):
+        """Defines the computation performed at every call when evaluation and
+        testing."""
+
+        imgs, _, head_args = self.reshape_input(imgs)
+
+        y = self._extract_features_test(imgs)
+
+        if self.multi_head:
+            assert dataset_id is not None
+
+            num_clips = imgs.size(0) // dataset_id.size(0)
+            if num_clips > 1:
+                dataset_id = dataset_id.view(-1, 1).repeat(1, num_clips).view(-1)
+
+            head_outs = []
+            for cls_head in self.cls_head:
+                head_y = cls_head(y, *head_args)
+                head_out = self._average_clip(head_y)
+                head_outs.append(head_out.cpu().numpy())
+
+            out = []
+            dataset_id = dataset_id.view(-1).cpu().numpy()
+            for idx, head_id in enumerate(dataset_id):
+                out.extend(head_outs[head_id][idx].reshape([1, -1]))
+        else:
+            y = self.cls_head(y, *head_args)
+            out = self._average_clip(y).cpu().numpy()
+
+        return out
+
+    def forward_inference(self, imgs):
+        """Used for computing network FLOPs and ONNX export.
+
+        See ``tools/analysis/get_flops.py``.
+
+        Args:
+            imgs (torch.Tensor): Input images.
+
+        Returns:
+            Tensor: Class score.
+        """
+
+        if self.multi_head:
+            raise NotImplementedError('Inference does not support multi-head architectures')
+
+        imgs, _, head_args = self.reshape_input_inference(imgs)
+        y = self._extract_features_test(imgs)
+        out = self.cls_head(y, *head_args)
+
+        return out
+
+    def forward(self, imgs, label=None, return_loss=True, dataset_id=None, **kwargs):
+        """Define the computation performed at every call."""
+
+        if return_loss:
+            if label is None:
+                raise ValueError('Label should not be None.')
+
+            return self.forward_train(imgs, label, dataset_id, **kwargs)
+        else:
+            return self.forward_test(imgs, dataset_id)
+
+    @staticmethod
+    def _parse_losses(losses, multi_head):
         """Parse the raw outputs (losses) of the network.
 
         Args:
@@ -113,31 +360,26 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 log_vars[loss_name] = loss_value.mean()
             elif isinstance(loss_value, list):
                 log_vars[loss_name] = sum(_loss.mean() for _loss in loss_value)
+            elif isinstance(loss_value, float):
+                log_vars[loss_name] = loss_value
             else:
-                raise TypeError(
-                    f'{loss_name} is not a tensor or list of tensors')
+                raise TypeError(f'{loss_name} is not a tensor or list of tensors')
 
-        loss = sum(_value for _key, _value in log_vars.items()
-                   if 'loss' in _key)
+        loss = sum(_value for _key, _value in log_vars.items() if 'loss' in _key)
 
         log_vars['loss'] = loss
         for loss_name, loss_value in log_vars.items():
+            if not isinstance(loss_value, torch.Tensor):
+                continue
+
             # reduce loss when distributed training
             if dist.is_available() and dist.is_initialized():
-                loss_value = loss_value.data.clone()
-                dist.all_reduce(loss_value.div_(dist.get_world_size()))
+                if not multi_head or loss_name == 'loss':
+                    loss_value = loss_value.clone().detach()
+                    dist.all_reduce(loss_value.div_(dist.get_world_size()))
             log_vars[loss_name] = loss_value.item()
 
         return loss, log_vars
-
-    def forward(self, imgs, label=None, return_loss=True):
-        """Define the computation performed at every call."""
-        if return_loss:
-            if label is None:
-                raise ValueError('Label should not be None.')
-            return self.forward_train(imgs, label)
-        else:
-            return self.forward_test(imgs)
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.
@@ -165,12 +407,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 DDP, it means the batch size on each GPU), which is used for
                 averaging the logs.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
 
-        losses = self(imgs, label)
+        losses = self(**data_batch)
 
-        loss, log_vars = self._parse_losses(losses)
+        loss, log_vars = self._parse_losses(losses, self.multi_head)
 
         outputs = dict(
             loss=loss,
@@ -186,12 +426,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         during val epochs. Note that the evaluation after training epochs is
         not implemented with this method, but an evaluation hook.
         """
-        imgs = data_batch['imgs']
-        label = data_batch['label']
 
-        losses = self(imgs, label)
-
-        loss, log_vars = self._parse_losses(losses)
+        losses = self(**data_batch)
+        loss, log_vars = self._parse_losses(losses, self.multi_head)
 
         outputs = dict(
             loss=loss,
@@ -199,3 +436,17 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             num_samples=len(next(iter(data_batch.values()))))
 
         return outputs
+
+    def train(self, train_mode=True):
+        super(BaseRecognizer, self).train(train_mode)
+
+        if self.bn_eval:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm3d):
+                    m.eval()
+
+                    if self.bn_frozen:
+                        for params in m.parameters():
+                            params.requires_grad = False
+
+        return self

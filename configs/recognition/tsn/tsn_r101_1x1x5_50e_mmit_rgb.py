@@ -15,8 +15,7 @@ model = dict(
         loss_cls=dict(type='BCELossWithLogits', loss_weight=160.0),
         dropout_ratio=0.5,
         init_std=0.01,
-        multi_class=True,
-        label_smooth_eps=0))
+        multi_class=True))
 # model training and testing settings
 train_cfg = None
 test_cfg = dict(average_clips=None)

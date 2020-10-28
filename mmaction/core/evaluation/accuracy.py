@@ -104,6 +104,28 @@ def top_k_accuracy(scores, labels, topk=(1, )):
     return res
 
 
+def mean_top_k_accuracy(scores, labels, k=1):
+    """MS-ASL like top-k accuracy definition.
+    """
+
+    idx = np.argsort(scores, axis=-1)[:, -k:][:, ::-1]
+    labels = np.array(labels).reshape([-1])
+    matches = np.any(idx == labels.reshape([-1, 1]), axis=-1)
+
+    classes = np.unique(labels)
+
+    accuracy_values = []
+    for class_id in classes:
+        mask = labels == class_id
+        num_valid = np.sum(mask)
+        if num_valid == 0:
+            continue
+
+        accuracy_values.append(np.sum(matches[mask]) / float(num_valid))
+
+    return np.mean(accuracy_values) if len(accuracy_values) > 0 else 1.0
+
+
 def mean_average_precision(scores, labels):
     """Mean average precision for multi-label recognition.
 
@@ -121,6 +143,58 @@ def mean_average_precision(scores, labels):
         ap = -np.sum(np.diff(recall) * np.array(precision)[:-1])
         results.append(ap)
     return np.mean(results)
+
+
+def ranking_mean_average_precision(scores, labels):
+    """Mean average precision for ranking problem.
+    """
+
+    def _ap(in_recall, in_precision):
+        mrec = np.concatenate((np.zeros([1, in_recall.shape[1]], dtype=np.float32),
+                               in_recall,
+                               np.ones([1, in_recall.shape[1]], dtype=np.float32)))
+        mpre = np.concatenate((np.zeros([1, in_precision.shape[1]], dtype=np.float32),
+                               in_precision,
+                               np.zeros([1, in_precision.shape[1]], dtype=np.float32)))
+
+        for i in range(mpre.shape[0] - 1, 0, -1):
+            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+        all_ap = []
+        cond = mrec[1:] != mrec[:-1]
+        for k in range(cond.shape[1]):
+            i = np.where(cond[:, k])[0]
+            all_ap.append(np.sum((mrec[i + 1, k] - mrec[i, k]) * mpre[i + 1, k]))
+
+        return np.array(all_ap, dtype=np.float32)
+
+    scores = np.array(scores, dtype=np.float32)
+    labels = np.array(labels, dtype=np.int32).reshape([-1])
+
+    one_hot_labels = np.zeros_like(scores, dtype=np.int32)
+    one_hot_labels[np.arange(len(labels)), labels] = 1
+
+    idx = np.argsort(-scores, axis=0)
+    sorted_labels = np.take_along_axis(one_hot_labels, idx, axis=0)
+
+    matched = sorted_labels == 1
+
+    tp = np.cumsum(matched, axis=0).astype(np.float32)
+    fp = np.cumsum(~matched, axis=0).astype(np.float32)
+
+    num_pos = np.sum(one_hot_labels, axis=0)
+    valid_mask = num_pos > 0
+    num_pos[~valid_mask] = 1
+    num_pos = num_pos.astype(np.float32)
+
+    recall = tp / num_pos.reshape([1, -1])
+    precision = tp / (tp + fp)
+
+    ap = _ap(recall, precision)
+    valid_ap = ap[valid_mask]
+    mean_ap = np.mean(ap) if len(valid_ap) > 0 else 1.0
+
+    return mean_ap
 
 
 def binary_precision_recall_curve(y_score, y_true):
@@ -465,3 +539,15 @@ def average_precision_at_temporal_iou(ground_truth,
                                                   recall_cumsum[t_idx, :])
 
     return ap
+
+
+def invalid_pred_info(scores, labels, k=5, scale=1.0):
+    pred = np.argsort(scores, axis=-1)[:, -k:]
+    conf = np.max(softmax(scale * scores, dim=-1), axis=1)
+
+    invalid_mask = np.array([labels[i] not in pred[i] for i in range(len(labels))])
+
+    invalid_ids = np.arange(len(pred))[invalid_mask]
+    invalid_conf = conf[invalid_mask]
+
+    return invalid_ids, invalid_conf

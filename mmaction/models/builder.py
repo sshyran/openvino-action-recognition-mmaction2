@@ -1,7 +1,8 @@
 import torch.nn as nn
 from mmcv.utils import build_from_cfg
 
-from .registry import BACKBONES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS
+from .registry import (BACKBONES, SPATIAL_TEMPORAL_MODULES, HEADS, LOCALIZERS, LOSSES, RECOGNIZERS,
+                       SCALAR_SCHEDULERS, PARAMS_MANAGERS)
 
 
 def build(cfg, registry, default_args=None):
@@ -18,7 +19,9 @@ def build(cfg, registry, default_args=None):
         nn.Module: A built nn module.
     """
 
-    if isinstance(cfg, list):
+    if cfg is None:
+        return None
+    elif isinstance(cfg, list):
         modules = [
             build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg
         ]
@@ -32,20 +35,37 @@ def build_backbone(cfg):
     return build(cfg, BACKBONES)
 
 
-def build_head(cfg):
+def build_reducer(cfg):
+    return build(cfg, SPATIAL_TEMPORAL_MODULES)
+
+
+def build_head(cfg, class_sizes=None):
     """Build head."""
-    return build(cfg, HEADS)
+    if class_sizes is None:
+        return build(cfg, HEADS)
+    else:
+        assert isinstance(class_sizes, (list, tuple))
+        heads = [build(cfg, HEADS, dict(class_sizes=cs)) for cs in class_sizes]
+
+        if len(heads) > 1:
+            return nn.ModuleList(heads)
+        else:
+            return heads[0]
 
 
-def build_recognizer(cfg, train_cfg=None, test_cfg=None):
+def build_recognizer(cfg, train_cfg=None, test_cfg=None, class_sizes=None):
     """Build recognizer."""
     return build(cfg, RECOGNIZERS,
-                 dict(train_cfg=train_cfg, test_cfg=test_cfg))
+                 dict(train_cfg=train_cfg, test_cfg=test_cfg, class_sizes=class_sizes))
 
 
-def build_loss(cfg):
+def build_loss(cfg, class_sizes=None):
     """Build loss."""
-    return build(cfg, LOSSES)
+    kwargs = dict()
+    if class_sizes is not None:
+        kwargs['class_sizes'] = class_sizes
+
+    return build(cfg, LOSSES, kwargs)
 
 
 def build_localizer(cfg):
@@ -53,11 +73,20 @@ def build_localizer(cfg):
     return build(cfg, LOCALIZERS)
 
 
-def build_model(cfg, train_cfg=None, test_cfg=None):
+def build_model(cfg, train_cfg=None, test_cfg=None, class_sizes=None):
     """Build model."""
     args = cfg.copy()
+
     obj_type = args.pop('type')
     if obj_type in LOCALIZERS:
         return build_localizer(cfg)
     elif obj_type in RECOGNIZERS:
-        return build_recognizer(cfg, train_cfg, test_cfg)
+        return build_recognizer(cfg, train_cfg, test_cfg, class_sizes)
+
+
+def build_scheduler(cfg):
+    return build(cfg, SCALAR_SCHEDULERS)
+
+
+def build_params_manager(cfg):
+    return build(cfg, PARAMS_MANAGERS)

@@ -1,10 +1,13 @@
 import copy
 import os.path as osp
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 
 import mmcv
 import torch
+import numpy as np
 from torch.utils.data import Dataset
+from terminaltables import AsciiTable
 
 from .pipelines import Compose
 
@@ -25,8 +28,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     Args:
         ann_file (str): Path to the annotation file.
         pipeline (list[dict | callable]): A sequence of data transforms.
-        data_prefix (str): Path to a directory where videos are held.
-            Default: None.
         test_mode (bool): Store True when building test or validation dataset.
             Default: False.
         multi_class (bool): Determines whether the dataset is a multi-class
@@ -41,30 +42,82 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
             Default: 'RGB'.
     """
 
+    allowed_metrics = []
+
     def __init__(self,
+                 source,
+                 root_dir,
                  ann_file,
+                 data_subdir,
                  pipeline,
-                 data_prefix=None,
+                 kpts_subdir=None,
+                 load_kpts=False,
                  test_mode=False,
                  multi_class=False,
                  num_classes=None,
                  start_index=1,
-                 modality='RGB'):
+                 modality='RGB',
+                 logger=None):
         super().__init__()
 
-        self.ann_file = ann_file
-        self.data_prefix = osp.realpath(data_prefix) if osp.isdir(
-            data_prefix) else data_prefix
+        assert isinstance(source, str)
+        self.dataset_ids_map = {0: source}
+
+        ann_file = osp.join(root_dir, source, ann_file)
+        assert osp.exists(ann_file), f'Annotation file does not exist: {ann_file}'
+
+        data_prefix = osp.join(root_dir, source, data_subdir)
+        assert osp.exists(data_prefix), f'Data root dir does not exist: {data_prefix}'
+
+        kpts_prefix = None
+        if kpts_subdir is not None and load_kpts:
+            kpts_prefix = osp.join(root_dir, source, kpts_subdir)
+            assert osp.exists(kpts_prefix), f'Kpts root dir does not exist: {kpts_prefix}'
+
         self.test_mode = test_mode
         self.multi_class = multi_class
         self.num_classes = num_classes
         self.start_index = start_index
         self.modality = modality
+        self.logger = logger
+
         self.pipeline = Compose(pipeline)
-        self.video_infos = self.load_annotations()
+        if self.logger is not None:
+            self.logger.info(f'Pipeline:\n{str(self.pipeline)}')
+
+        self.video_infos = self._load_annotations(ann_file, data_prefix)
+        self.video_infos = self._add_dataset_info(self.video_infos, dataset_id=0, dataset_name=source)
+        self.video_infos = self._add_kpts_info(self.video_infos, data_prefix, kpts_prefix, load_kpts)
+
+    @staticmethod
+    def _add_dataset_info(records, dataset_id, dataset_name):
+        for record in records:
+            record['dataset_id'] = dataset_id
+            record['dataset_name'] = dataset_name
+
+        return records
+
+    @staticmethod
+    def _add_kpts_info(records, data_prefix, kpts_prefix, enable):
+        if not enable or kpts_prefix is None:
+            return records
+
+        cut_len = len(osp.abspath(data_prefix)) + 1
+        for record in records:
+            if 'frame_dir' in record:
+                rel_path = osp.abspath(record['frame_dir'])[cut_len:]
+            elif 'filename' in record:
+                rel_path = osp.abspath(record['filename'])[cut_len:].split('.')[0]
+            else:
+                raise ValueError(f'Record has unknown data format. Keys: {record.keys()}')
+
+            kpts_file = osp.join(kpts_prefix, f'{rel_path}.json')
+            record['kpts_file'] = kpts_file
+
+        return records
 
     @abstractmethod
-    def load_annotations(self):
+    def _load_annotations(self, ann_file, data_prefix):
         """Load the annotation according to ann_file into video_infos."""
         pass
 
@@ -80,6 +133,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                 path_value = video_infos[i][path_key]
                 path_value = osp.join(self.data_prefix, path_value)
                 video_infos[i][path_key] = path_value
+
             if self.multi_class:
                 assert self.num_classes is not None
                 onehot = torch.zeros(self.num_classes)
@@ -88,43 +142,131 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
             else:
                 assert len(video_infos[i]['label']) == 1
                 video_infos[i]['label'] = video_infos[i]['label'][0]
+
         return video_infos
 
-    @abstractmethod
-    def evaluate(self, results, metrics, logger):
+    def evaluate(self, results, metrics, **kwargs):
         """Evaluation for the dataset.
 
         Args:
             results (list): Output results.
             metrics (str | sequence[str]): Metrics to be performed.
-            logger (logging.Logger | None): Logger for recording.
 
         Returns:
             dict: Evaluation results dict.
         """
+
+        if not isinstance(results, list):
+            raise TypeError(f'results must be a list, but got {type(results)}')
+
+        metrics = metrics if isinstance(metrics, (list, tuple)) else [metrics]
+        for metric in metrics:
+            if metric not in self.allowed_metrics:
+                raise KeyError(f'metric {metric} is not supported')
+
+        return self._evaluate(results, metrics, **kwargs)
+
+    @abstractmethod
+    def _evaluate(self, results, metrics, **kwargs):
+        """Evaluation for the dataset.
+
+        Args:
+            results (list): Output results.
+            metrics (sequence[str]): Metrics to be performed.
+
+        Returns:
+            dict: Evaluation results dict.
+        """
+
         pass
 
     def dump_results(self, results, out):
         """Dump data to json/yaml/pickle strings or files."""
+
         return mmcv.dump(results, out)
 
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
+
         results = copy.deepcopy(self.video_infos[idx])
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+
         return self.pipeline(results)
 
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
+
         results = copy.deepcopy(self.video_infos[idx])
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+
         return self.pipeline(results)
 
     def __len__(self):
         """Get the size of the dataset."""
+
         return len(self.video_infos)
+
+    def __add__(self, other):
+        other_dataset_ids_map = other.dataset_ids_map
+        assert len(other_dataset_ids_map) == 1
+
+        next_dataset_id = max(self.dataset_ids_map.keys()) + 1
+        self.dataset_ids_map[next_dataset_id] = other_dataset_ids_map[0]
+
+        for record in other.video_infos:
+            record['dataset_id'] = next_dataset_id
+            self.video_infos.append(record)
+
+        return self
+
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
+
+    def _parse_data(self):
+        all_ids = defaultdict(list)
+        for record in self.video_infos:
+            dataset_id = record['dataset_id']
+            all_ids[dataset_id].append(record['label'])
+
+        out_ids = {}
+        for dataset_id, dataset_items in all_ids.items():
+            labels, counts = np.unique(dataset_items, return_counts=True)
+            out_ids[dataset_id] = {label: size for label, size in zip(labels, counts)}
+
+            actual_size = len(labels)
+            expected_size = max(labels) + 1
+            if actual_size != expected_size:
+                print('Expected {} labels but found {} for the {} dataset.'
+                      .format(expected_size, actual_size, self.dataset_ids_map[dataset_id]))
+
+        return out_ids
+
+    def __repr__(self):
+        datasets = self._parse_data()
+
+        data_info = []
+        total_num_labels, total_num_items = 0, 0
+        for dataset_id, labels in datasets.items():
+            dataset_name = self.dataset_ids_map[dataset_id]
+            dataset_num_labels = len(labels)
+            dataset_num_items = sum(labels.values())
+
+            data_info.append([dataset_name, dataset_num_labels, dataset_num_items])
+            total_num_labels += dataset_num_labels
+            total_num_items += dataset_num_items
+        data_info.append(['total', total_num_labels, total_num_items])
+
+        header = ['name', '# labels', '# items']
+        table_data = [header] + data_info
+        table = AsciiTable(table_data)
+        msg = table.table
+
+        return msg
 
     def __getitem__(self, idx):
         """Get the sample for either training or testing given index."""
@@ -132,3 +274,13 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
             return self.prepare_test_frames(idx)
         else:
             return self.prepare_train_frames(idx)
+
+    def num_classes(self):
+        datasets = self._parse_data()
+
+        return [max(list(datasets[dataset_id].keys())) + 1 for dataset_id in sorted(datasets.keys())]
+
+    def class_sizes(self):
+        datasets = self._parse_data()
+
+        return [datasets[dataset_id] for dataset_id in sorted(datasets.keys())]

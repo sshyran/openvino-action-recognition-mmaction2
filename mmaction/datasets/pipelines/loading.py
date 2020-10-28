@@ -177,6 +177,12 @@ class SampleFrames(object):
         results['num_clips'] = self.num_clips
         return results
 
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+                   f'frame_interval={self.frame_interval}, ' \
+                   f'num_clips={self.num_clips})'
+        return repr_str
+
 
 @PIPELINES.register_module()
 class UntrimmedSampleFrames(object):
@@ -225,6 +231,11 @@ class UntrimmedSampleFrames(object):
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = num_clips
         return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+                   f'frame_interval={self.frame_interval})'
+        return repr_str
 
 
 @PIPELINES.register_module()
@@ -314,6 +325,157 @@ class DenseSampleFrames(SampleFrames):
             clip_offsets.extend((base_offsets + start_idx) % num_frames)
         clip_offsets = np.array(clip_offsets)
         return clip_offsets
+
+
+@PIPELINES.register_module()
+class StreamSampleFrames(object):
+    """Sample frames from the video stream.
+
+    Required keys are "filename", "clip_start", "clip_end", "video_start",
+    "video_end", "fps", "start_index" , added or
+    modified keys are "frame_inds", "trg_fps" and "num_clips".
+
+    Args:
+        clip_len (int): Frames of each sampled output clip.
+        trg_fps (int): Target frame rate. Default: 15.0
+        num_clips (int): Number of clips to be sampled. Default: 1.
+        temporal_jitter (bool): Whether to apply temporal jittering.
+            Default: False.
+        test_mode (bool): Store True when building test or validation dataset.
+            Default: False.
+    """
+
+    def __init__(self,
+                 clip_len,
+                 trg_fps=15.0,
+                 num_clips=1,
+                 temporal_jitter=False,
+                 min_intersection=0.6,
+                 ignore_outside=False,
+                 test_mode=False):
+
+        self.clip_len = clip_len
+        self.trg_fps = trg_fps
+        self.num_clips = num_clips
+        self.temporal_jitter = temporal_jitter
+        self.min_intersection = min_intersection
+        self.ignore_outside = ignore_outside
+        self.test_mode = test_mode
+
+    def _estimate_time_step(self, video_fps):
+        return max(1, int(np.round(float(video_fps) / float(self.trg_fps))))
+
+    def _estimate_clip_lengths(self, time_step):
+        return time_step * self.clip_len, self.clip_len
+
+    def _generate_indices(self, record, time_step, input_length, output_length):
+        if self.test_mode:
+            return self._get_test_indices(record, time_step, input_length, output_length)
+        else:
+            return self._get_train_indices(record, time_step, input_length, output_length)
+
+    def _get_train_indices(self, record, time_step, input_length, output_length):
+        if record['video_len'] < input_length:
+            num_valid_frames = record['video_len'] // time_step
+            if num_valid_frames == 0:
+                num_valid_frames = record['video_len']
+
+            if self.temporal_jitter:
+                offsets = np.random.randint(low=0, high=time_step, size=num_valid_frames, dtype=np.int32)
+            else:
+                offsets = np.zeros(num_valid_frames, dtype=np.int32)
+
+            shift_start = record['video_start']
+            indices = np.array([shift_start + i * time_step + offsets[i] for i in range(num_valid_frames)])
+
+            num_rest = output_length - num_valid_frames
+            if num_rest > 0:
+                num_before = np.random.randint(num_rest + 1)
+                before_fill_value = -1 if self.ignore_outside else indices[0]
+                before_values = np.full(num_before, before_fill_value, dtype=np.int32)
+
+                num_after = num_rest - num_before
+                after_fill_value = -1 if self.ignore_outside else indices[-1]
+                after_values = np.full(num_after, after_fill_value, dtype=np.int32)
+
+                indices = np.concatenate((before_values, indices, after_values))
+        else:
+            if record['clip_len'] < input_length:
+                bumpy_num_frames = int(float(1.0 - self.min_intersection) * float(record['clip_len']))
+                shift_start = max(record['video_start'], record['clip_end'] - bumpy_num_frames - input_length)
+                shift_end = min(record['video_end'] - input_length + 1, record['clip_start'] + bumpy_num_frames + 1)
+            else:
+                shift_start = record['clip_start']
+                shift_end = record['clip_end'] - input_length + 1
+
+            if self.temporal_jitter:
+                offsets = np.random.randint(low=0, high=time_step, size=output_length, dtype=np.int32)
+            else:
+                offsets = np.zeros(output_length, dtype=np.int32)
+
+            start_pos = np.random.randint(low=shift_start, high=shift_end)
+            indices = np.array([start_pos + i * time_step + offsets[i] for i in range(output_length)])
+
+        return indices
+
+    def _get_test_indices(self, record, time_step, input_length, output_length):
+        if record['video_len'] < input_length:
+            shift_start = record['video_start']
+            indices = np.array([shift_start + i * time_step for i in range(record['video_len'] // time_step)])
+
+            num_rest = output_length - len(indices)
+            if num_rest > 0:
+                num_before = num_rest // 2
+                num_after = num_rest - num_before
+                indices = np.concatenate((np.full(num_before, indices[0], dtype=np.int32),
+                                          indices,
+                                          np.full(num_after, indices[-1], dtype=np.int32)))
+        else:
+            if record['clip_len'] < input_length:
+                shift_start = max(record['video_start'], record['clip_end'] - input_length)
+                shift_end = min(record['video_end'] - input_length + 1, record['clip_start'] + 1)
+            else:
+                shift_start = record['clip_start']
+                shift_end = record['clip_end'] - input_length + 1
+            start_pos = (shift_start + shift_end) // 2
+
+            indices = np.array([start_pos + i * time_step for i in range(output_length)])
+
+        return indices
+
+    def __call__(self, results):
+        """Perform the StreamSampleFrames loading.
+
+        Args:
+            results (dict): The resulting dict to be modified and passed
+                to the next transform in pipeline.
+        """
+
+        frame_interval = self._estimate_time_step(results['fps'])
+        input_length, output_length = self._estimate_clip_lengths(frame_interval)
+
+        start_index = results['start_index']
+        all_frame_inds = []
+        for clip_id in range(self.num_clips):
+            frame_inds = self._generate_indices(results, frame_interval, input_length, output_length)
+            frame_inds = np.array(frame_inds).astype(np.int)
+            frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
+            all_frame_inds.append(frame_inds)
+
+        frame_inds = np.concatenate(all_frame_inds)
+
+        results['frame_inds'] = frame_inds
+        results['num_clips'] = self.num_clips
+        results['clip_len'] = self.clip_len
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(clip_len={self.clip_len}, ' \
+                   f'trg_fps={self.trg_fps}, ' \
+                   f'num_clips={self.num_clips}, ' \
+                   f'min_intersection={self.min_intersection})'
+        return repr_str
 
 
 @PIPELINES.register_module()
@@ -866,29 +1028,31 @@ class RawFrameDecode(object):
                 to the next transform in pipeline.
         """
         mmcv.use_backend(self.decoding_backend)
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend, **self.kwargs)
+
+        if results['frame_inds'].ndim != 1:
+            results['frame_inds'] = results['frame_inds'].flatten()
 
         directory = results['frame_dir']
         filename_tmpl = results['filename_tmpl']
         modality = results['modality']
-
-        if self.file_client is None:
-            self.file_client = FileClient(self.io_backend, **self.kwargs)
-
-        imgs = list()
-
-        if results['frame_inds'].ndim != 1:
-            results['frame_inds'] = np.squeeze(results['frame_inds'])
-
         offset = results.get('offset', 0)
 
-        for frame_idx in results['frame_inds']:
+        imgs = list()
+        valid_image_ids, empty_image_ids = [], []
+        for i, frame_idx in enumerate(results['frame_inds']):
+            if frame_idx < 0:
+                imgs.append(None)
+                empty_image_ids.append(i)
+                continue
+
             frame_idx += offset
+
             if modality == 'RGB':
                 filepath = osp.join(directory, filename_tmpl.format(frame_idx))
                 img_bytes = self.file_client.get(filepath)
-                # Get frame with channel order RGB directly.
-                cur_frame = mmcv.imfrombytes(img_bytes, channel_order='rgb')
-                imgs.append(cur_frame)
+                image = mmcv.imfrombytes(img_bytes, channel_order='rgb')
             elif modality == 'Flow':
                 x_filepath = osp.join(directory,
                                       filename_tmpl.format('x', frame_idx))
@@ -898,15 +1062,37 @@ class RawFrameDecode(object):
                 x_frame = mmcv.imfrombytes(x_img_bytes, flag='grayscale')
                 y_img_bytes = self.file_client.get(y_filepath)
                 y_frame = mmcv.imfrombytes(y_img_bytes, flag='grayscale')
-                imgs.extend([x_frame, y_frame])
+                image = [x_frame, y_frame]
             else:
                 raise NotImplementedError
+
+            imgs.append(image)
+            valid_image_ids.append(i)
+
+        assert len(valid_image_ids) > 0
+
+        if len(empty_image_ids) > 0:
+            valid_image = imgs[valid_image_ids[0]]
+            for empty_idx in empty_image_ids:
+                image = np.zeros_like(valid_image)
+                if modality == 'Flow':
+                    image = [image, np.zeros_like(valid_image)]
+
+                imgs[empty_idx] = image
+
+        if modality == 'Flow':
+            imgs = [im for tup in imgs for im in tup]
 
         results['imgs'] = imgs
         results['original_shape'] = imgs[0].shape[:2]
         results['img_shape'] = imgs[0].shape[:2]
 
         return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(io_backend={self.io_backend}, ' \
+                   f'decoding_backend={self.decoding_backend})'
+        return repr_str
 
 
 @PIPELINES.register_module()
@@ -1060,3 +1246,96 @@ class LoadProposals(object):
         results['reference_temporal_iou'] = reference_temporal_iou
 
         return results
+
+
+@PIPELINES.register_module()
+class GenerateKptsMask(object):
+    """Generate key-point masks.
+    """
+
+    def __init__(self, sigma_scale=0.1, out_name='attention_mask'):
+        self.sigma_scale = sigma_scale
+        self.out_name = out_name
+
+    @staticmethod
+    def _generate_mask_by_kpts(frame_id, kpts, size, sigma_scale):
+        assert len(size) == 2
+        out_height, out_width = size
+        sigma_sqr = (sigma_scale * np.sqrt(out_height ** 2 + out_width ** 2)) ** 2
+
+        mask_accumulator = np.zeros(size, dtype=np.float32)
+        for kpt_data in kpts.values():
+            if frame_id in kpt_data:
+                center_x, center_y = [float(value) for value in kpt_data[frame_id][:2]]
+
+                x, y = np.meshgrid(np.arange(out_width), np.arange(out_height))
+                dist_sqr = (x - center_x) ** 2 + (y - center_y) ** 2
+
+                local_mask = np.exp(-0.5 * dist_sqr / sigma_sqr)
+                mask_accumulator += local_mask
+
+        max_value = np.max(mask_accumulator)
+        if max_value > 0.0:
+            mask_accumulator /= max_value
+            out_mask = np.where(
+                mask_accumulator > 0.5,
+                np.ones(size, dtype=np.uint8),
+                np.zeros(size, dtype=np.uint8)
+            )
+        else:
+            out_mask = np.zeros(size, dtype=np.uint8)
+
+        return out_mask.reshape(size)
+
+    @staticmethod
+    def _load_kpts(filepath):
+        with open(filepath) as kpts_stream:
+            raw_kpts = mmcv.load(kpts_stream, file_format='json')
+
+        kpts = dict()
+        for kpt_id, frame_data in raw_kpts.items():
+            kpts[int(kpt_id)] = {int(frame_id): kpt for frame_id, kpt in frame_data.items()}
+
+        return kpts
+
+    def __call__(self, results):
+        assert 'kpts_file' in results
+        assert osp.exists(results['kpts_file'])
+
+        if results['frame_inds'].ndim != 1:
+            results['frame_inds'] = results['frame_inds'].flatten()
+
+        kpts = self._load_kpts(results['kpts_file'])
+        imgs = results['imgs']
+        offset = results.get('offset', 0)
+
+        assert len(imgs) > 0, 'At least one image should be loaded before mask sampling'
+
+        masks = []
+        valid_mask_ids, empty_mask_ids = [], []
+        for i, frame_idx in enumerate(results['frame_inds']):
+            mask = None
+            if frame_idx >= 0:
+                mask = self._generate_mask_by_kpts(
+                    frame_idx + offset, kpts, imgs[0].shape[:2], self.sigma_scale
+                )
+
+            ids_list = empty_mask_ids if mask is None else valid_mask_ids
+            ids_list.append(i)
+
+            masks.append(mask)
+
+        if len(empty_mask_ids) > 0:
+            valid_mask = masks[valid_mask_ids[0]]
+            for empty_idx in empty_mask_ids:
+                masks[empty_idx] = np.zeros_like(valid_mask)
+
+        results[self.out_name] = masks
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__} (' \
+                   f'sigma_scale={self.sigma_scale}, ' \
+                   f'out_name={self.out_name})'
+        return repr_str

@@ -9,7 +9,8 @@ from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
                       LoadLocalizationFeature, LoadProposals, OpenCVDecode,
                       OpenCVInit, PyAVDecode, PyAVInit, RawFrameDecode,
                       SampleFrames, SampleProposalFrames,
-                      UntrimmedSampleFrames)
+                      UntrimmedSampleFrames, StreamSampleFrames,
+                      GenerateKptsMask)
 
 __all__ = [
     'SampleFrames', 'PyAVDecode', 'DecordDecode', 'DenseSampleFrames',
@@ -19,5 +20,6 @@ __all__ = [
     'Collect', 'FormatShape', 'Compose', 'ToTensor', 'ToDataContainer',
     'GenerateLocalizationLabels', 'LoadLocalizationFeature', 'LoadProposals',
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
-    'UntrimmedSampleFrames', 'RawFrameDecode'
+    'UntrimmedSampleFrames', 'RawFrameDecode', 'StreamSampleFrames',
+    'GenerateKptsMask'
 ]

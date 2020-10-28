@@ -228,11 +228,22 @@ class FormatShape(object):
         input_format (str): Define the final imgs format.
     """
 
-    def __init__(self, input_format):
+    def __init__(self, input_format, targets=None):
         self.input_format = input_format
         if self.input_format not in ['NCTHW', 'NCHW', 'NCHW_Flow', 'NPTCHW']:
             raise ValueError(
                 f'The input format {self.input_format} is invalid.')
+
+        self.targets = ['imgs']
+        if targets is not None:
+            if not isinstance(targets, (tuple, list)):
+                targets = [targets]
+
+            for target in targets:
+                assert isinstance(target, str)
+
+                if target not in self.targets:
+                    self.targets.append(target)
 
     def __call__(self, results):
         """Performs the FormatShape formating.
@@ -241,48 +252,55 @@ class FormatShape(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
-        imgs = results['imgs']
-        # [M x H x W x C]
-        # M = 1 * N_crops * N_clips * L
-        if self.input_format == 'NCTHW':
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
+        for trg_name in self.targets:
+            data = results[trg_name]
+            if isinstance(data, (tuple, list)):
+                data = [obj.reshape(obj.shape[:2] + (-1, )) for obj in data]
+            data = np.array(data, dtype=np.float32)
 
-            imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
-            # N_crops x N_clips x L x H x W x C
-            imgs = np.transpose(imgs, (0, 1, 5, 2, 3, 4))
-            # N_crops x N_clips x C x L x H x W
-            imgs = imgs.reshape((-1, ) + imgs.shape[2:])
-            # M' x C x L x H x W
-            # M' = N_crops x N_clips
-        elif self.input_format == 'NCHW':
-            imgs = np.transpose(imgs, (0, 3, 1, 2))
-            # M x C x H x W
-        elif self.input_format == 'NCHW_Flow':
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
-            imgs = imgs.reshape((-1, num_clips, clip_len) + imgs.shape[1:])
-            # N_crops x N_clips x L x H x W x C
-            imgs = np.transpose(imgs, (0, 1, 2, 5, 3, 4))
-            # N_crops x N_clips x L x C x H x W
-            imgs = imgs.reshape((-1, imgs.shape[2] * imgs.shape[3]) +
-                                imgs.shape[4:])
-            # M' x C' x H x W
-            # M' = N_crops x N_clips
-            # C' = L x C
-        elif self.input_format == 'NPTCHW':
-            num_proposals = results['num_proposals']
-            num_clips = results['num_clips']
-            clip_len = results['clip_len']
-            imgs = imgs.reshape((num_proposals, num_clips * clip_len) +
-                                imgs.shape[1:])
-            # P x M x H x W x C
-            # M = N_clips x L
-            imgs = np.transpose(imgs, (0, 1, 4, 2, 3))
-            # P x M x C x H x W
+            # [M x H x W x C]
+            # M = 1 * N_crops * N_clips * L
+            if self.input_format == 'NCTHW':
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
 
-        results['imgs'] = imgs
-        results['input_shape'] = imgs.shape
+                data = data.reshape((-1, num_clips, clip_len) + data.shape[1:])
+                # N_crops x N_clips x L x H x W x C
+                data = np.transpose(data, (0, 1, 5, 2, 3, 4))
+                # N_crops x N_clips x C x L x H x W
+                data = data.reshape((-1,) + data.shape[2:])
+                # M' x C x L x H x W
+                # M' = N_crops x N_clips
+            elif self.input_format == 'NCHW':
+                data = np.transpose(data, (0, 3, 1, 2))
+                # M x C x H x W
+            elif self.input_format == 'NCHW_Flow':
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
+                data = data.reshape((-1, num_clips, clip_len) + data.shape[1:])
+                # N_crops x N_clips x L x H x W x C
+                data = np.transpose(data, (0, 1, 2, 5, 3, 4))
+                # N_crops x N_clips x L x C x H x W
+                data = data.reshape((-1, data.shape[2] * data.shape[3]) +
+                                    data.shape[4:])
+                # M' x C' x H x W
+                # M' = N_crops x N_clips
+                # C' = L x C
+            elif self.input_format == 'NPTCHW':
+                num_proposals = results['num_proposals']
+                num_clips = results['num_clips']
+                clip_len = results['clip_len']
+                data = data.reshape((num_proposals, num_clips * clip_len) +
+                                    data.shape[1:])
+                # P x M x H x W x C
+                # M = N_clips x L
+                data = np.transpose(data, (0, 1, 4, 2, 3))
+                # P x M x C x H x W
+
+            results[trg_name] = data
+
+        results['input_shape'] = results['imgs'].shape
+
         return results
 
     def __repr__(self):

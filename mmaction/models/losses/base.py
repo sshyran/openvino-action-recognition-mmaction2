@@ -14,7 +14,7 @@ class BaseWeightedLoss(nn.Module, metaclass=ABCMeta):
             Default: 1.0.
     """
 
-    def __init__(self, loss_weight=1.0):
+    def __init__(self, loss_weight=1.0, **kwargs):
         super().__init__()
         self.loss_weight = loss_weight
 

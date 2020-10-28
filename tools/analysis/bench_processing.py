@@ -39,7 +39,7 @@ def main():
                 f1.writelines(lines)
     cfg.data.train.ann_file = ann_file_bench
 
-    dataset = build_dataset(cfg.data.train)
+    dataset = build_dataset(cfg.data, 'train')
     data_loader = build_dataloader(
         dataset,
         videos_per_gpu=cfg.data.videos_per_gpu,

@@ -41,6 +41,7 @@ class Compose(object):
             data = t(data)
             if data is None:
                 return None
+
         return data
 
     def __repr__(self):
@@ -49,4 +50,5 @@ class Compose(object):
             format_string += '\n'
             format_string += '    {0}'.format(t)
         format_string += '\n)'
+
         return format_string

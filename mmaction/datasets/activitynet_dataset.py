@@ -71,29 +71,38 @@ class ActivityNetDataset(BaseDataset):
             Default: False.
     """
 
-    def __init__(self, ann_file, pipeline, data_prefix=None, test_mode=False):
-        super().__init__(ann_file, pipeline, data_prefix, test_mode)
+    allowed_metrics = ['AR@AN']
 
-    def load_annotations(self):
+    def __init__(self,
+                 source,
+                 root_dir,
+                 ann_file,
+                 data_subdir,
+                 pipeline,
+                 test_mode=False,
+                 logger=None):
+        super().__init__(source, root_dir, ann_file, data_subdir, pipeline,
+                         test_mode=test_mode, logger=logger)
+
+    def _load_annotations(self, ann_file, data_prefix=None):
         """Load the annotation according to ann_file into video_infos."""
         video_infos = []
-        anno_database = mmcv.load(self.ann_file)
+        anno_database = mmcv.load(ann_file)
         for video_name in anno_database:
             video_info = anno_database[video_name]
             video_info['video_name'] = video_name
+            video_info['data_prefix'] = data_prefix
             video_infos.append(video_info)
         return video_infos
 
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
         results = copy.deepcopy(self.video_infos[idx])
-        results['data_prefix'] = self.data_prefix
         return self.pipeline(results)
 
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
         results = copy.deepcopy(self.video_infos[idx])
-        results['data_prefix'] = self.data_prefix
         return self.pipeline(results)
 
     def __len__(self):
@@ -182,12 +191,12 @@ class ActivityNetDataset(BaseDataset):
             raise ValueError(
                 f'The output format {output_format} is not supported.')
 
-    def evaluate(self,
-                 results,
-                 metrics='AR@AN',
-                 max_avg_proposals=100,
-                 temporal_iou_thresholds=np.linspace(0.5, 0.95, 10),
-                 logger=None):
+    def _evaluate(self,
+                  results,
+                  metrics='AR@AN',
+                  max_avg_proposals=100,
+                  temporal_iou_thresholds=np.linspace(0.5, 0.95, 10),
+                  logger=None):
         """Evaluation in feature dataset.
 
         Args:
@@ -203,17 +212,6 @@ class ActivityNetDataset(BaseDataset):
         Returns:
             dict: Evaluation results for evaluation metrics.
         """
-        if not isinstance(results, list):
-            raise TypeError(f'results must be a list, but got {type(results)}')
-        assert len(results) == len(self), (
-            f'The length of results is not equal to the dataset len: '
-            f'{len(results)} != {len(self)}')
-
-        metrics = metrics if isinstance(metrics, (list, tuple)) else [metrics]
-        allowed_metrics = ['AR@AN']
-        for metric in metrics:
-            if metric not in allowed_metrics:
-                raise KeyError(f'metric {metric} is not supported')
 
         eval_results = {}
         ground_truth = self._import_ground_truth()

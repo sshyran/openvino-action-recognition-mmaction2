@@ -2,7 +2,7 @@ import torch.nn as nn
 from mmcv.cnn import normal_init
 
 from ..registry import HEADS
-from .base import AvgConsensus, BaseHead
+from .base import BaseHead
 
 
 @HEADS.register_module()
@@ -23,45 +23,25 @@ class TSNHead(BaseHead):
     """
 
     def __init__(self,
-                 num_classes,
-                 in_channels,
-                 loss_cls=dict(type='CrossEntropyLoss'),
                  spatial_type='avg',
                  consensus=dict(type='AvgConsensus', dim=1),
-                 dropout_ratio=0.4,
                  init_std=0.01,
                  **kwargs):
-        super().__init__(num_classes, in_channels, loss_cls=loss_cls, **kwargs)
+        super().__init__(consensus=consensus, **kwargs)
 
-        self.spatial_type = spatial_type
-        self.dropout_ratio = dropout_ratio
         self.init_std = init_std
 
-        consensus_ = consensus.copy()
-
-        consensus_type = consensus_.pop('type')
-        if consensus_type == 'AvgConsensus':
-            self.consensus = AvgConsensus(**consensus_)
-        else:
-            self.consensus = None
-
-        if self.spatial_type == 'avg':
-            # use `nn.AdaptiveAvgPool2d` to adaptively match the in_channels.
+        self.avg_pool = None
+        if spatial_type == 'avg':
             self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        else:
-            self.avg_pool = None
 
-        if self.dropout_ratio != 0:
-            self.dropout = nn.Dropout(p=self.dropout_ratio)
-        else:
-            self.dropout = None
         self.fc_cls = nn.Linear(self.in_channels, self.num_classes)
 
     def init_weights(self):
         """Initiate the parameters from scratch."""
         normal_init(self.fc_cls, std=self.init_std)
 
-    def forward(self, x, num_segs):
+    def forward(self, x, num_segs, **kwargs):
         """Defines the computation performed at every call.
 
         Args:

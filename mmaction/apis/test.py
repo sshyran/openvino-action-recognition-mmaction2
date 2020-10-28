@@ -22,9 +22,11 @@ def single_gpu_test(model, data_loader):
         list: The prediction results.
     """
     model.eval()
+
     results = []
     dataset = data_loader.dataset
-    prog_bar = mmcv.ProgressBar(len(dataset))
+    progress_bar = mmcv.ProgressBar(len(dataset))
+
     for data in data_loader:
         with torch.no_grad():
             result = model(return_loss=False, **data)
@@ -33,7 +35,8 @@ def single_gpu_test(model, data_loader):
         # use the first key as main key to calculate the batch size
         batch_size = len(next(iter(data.values())))
         for _ in range(batch_size):
-            prog_bar.update()
+            progress_bar.update()
+
     return results
 
 
@@ -58,14 +61,18 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True):
         list: The prediction results.
     """
     model.eval()
+
     results = []
     dataset = data_loader.dataset
     rank, world_size = get_dist_info()
+
     if rank == 0:
         prog_bar = mmcv.ProgressBar(len(dataset))
+
     for data in data_loader:
         with torch.no_grad():
             result = model(return_loss=False, **data)
+
         results.extend(result)
 
         if rank == 0:
@@ -79,6 +86,7 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=True):
         results = collect_results_gpu(results, len(dataset))
     else:
         results = collect_results_cpu(results, len(dataset), tmpdir)
+
     return results
 
 

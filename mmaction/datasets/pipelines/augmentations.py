@@ -1,4 +1,5 @@
 import random
+import os.path as osp
 from collections.abc import Sequence
 
 import mmcv
@@ -440,6 +441,92 @@ class MultiScaleCrop(object):
 
 
 @PIPELINES.register_module()
+class RatioPreservingCrop(object):
+    def __init__(self, input_size, scale_limits=(1.0, 0.8), targets=None, interpolation='bilinear'):
+        assert isinstance(scale_limits, (tuple, list))
+        assert len(scale_limits) == 2
+        self.scale_limits = float(min(scale_limits)), float(max(scale_limits))
+        assert 0.0 < self.scale_limits[0] < self.scale_limits[1] <= 1.0
+
+        self.input_size = input_size if not isinstance(input_size, int) else [input_size, input_size]
+        self.output_size = self.input_size[1], self.input_size[0]
+
+        self.targets = ['imgs']
+        if targets is not None:
+            if not isinstance(targets, (tuple, list)):
+                targets = [targets]
+
+            for target in targets:
+                assert isinstance(target, str)
+
+                if target not in self.targets:
+                    self.targets.append(target)
+
+        self.interpolation = interpolation
+        if isinstance(self.interpolation, (tuple, list)):
+            assert len(self.interpolation) == len(self.targets)
+        else:
+            self.interpolation = [self.interpolation] * len(self.targets)
+
+    @staticmethod
+    def _sample_crop_bbox(scale_limits, image_size, trg_size):
+        image_h, image_w = image_size[0], image_size[1]
+
+        scale = np.random.uniform(low=scale_limits[0], high=scale_limits[1])
+
+        src_ar = float(image_h) / float(image_w)
+        trg_ar = float(trg_size[0]) / float(trg_size[1])
+        if src_ar < trg_ar:
+            crop_h = scale * image_h
+            crop_w = crop_h / trg_ar
+        else:
+            crop_w = scale * image_w
+            crop_h = crop_w * trg_ar
+
+        crop_w = min(image_w, int(crop_w))
+        crop_h = min(image_h, int(crop_h))
+
+        w_offset = random.randint(0, image_w - crop_w) if crop_w < image_w else 0
+        h_offset = random.randint(0, image_h - crop_h) if crop_h < image_h else 0
+
+        return crop_w, crop_h, w_offset, h_offset
+
+    def __call__(self, results):
+        img_data = results['imgs']
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        img_size = img_data[0].shape[:2]
+
+        rand_boxes = []
+        for clip_id in range(num_clips):
+            crop_w, crop_h, offset_w, offset_h = self._sample_crop_bbox(
+                self.scale_limits, img_size, self.input_size
+            )
+            rand_boxes.append(np.array([offset_w, offset_h, offset_w + crop_w - 1, offset_h + crop_h - 1]))
+
+        for trg_name, interpolation in zip(self.targets, self.interpolation):
+            trg_data = results[trg_name]
+            assert len(trg_data) == num_clips * clip_len
+
+            processed_data = []
+            for clip_id in range(num_clips):
+                for i in range(clip_len):
+                    cropped_img = mmcv.imcrop(trg_data[clip_id * clip_len + i], rand_boxes[clip_id])
+                    resized_img = mmcv.imresize(cropped_img, self.output_size, interpolation=interpolation)
+                    processed_data.append(resized_img)
+
+            results[trg_name] = processed_data
+
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}('
+                    f'input_size={self.input_size}, scale_limits={self.scale_limits})')
+        return repr_str
+
+
+@PIPELINES.register_module()
 class Resize(object):
     """Resize images to a specific size.
 
@@ -463,11 +550,7 @@ class Resize(object):
         lazy (bool): Determine whether to apply lazy operation. Default: False.
     """
 
-    def __init__(self,
-                 scale,
-                 keep_ratio=True,
-                 interpolation='bilinear',
-                 lazy=False):
+    def __init__(self, scale, keep_ratio=True, lazy=False, targets=None, interpolation='bilinear'):
         if isinstance(scale, float):
             if scale <= 0:
                 raise ValueError(f'Invalid scale {scale}, must be positive.')
@@ -478,12 +561,28 @@ class Resize(object):
                 # assign np.inf to long edge for rescaling short edge later.
                 scale = (np.inf, max_long_edge)
         else:
-            raise TypeError(
-                f'Scale must be float or tuple of int, but got {type(scale)}')
+            raise TypeError(f'Scale must be float or tuple of int, but got {type(scale)}')
+
         self.scale = scale
         self.keep_ratio = keep_ratio
-        self.interpolation = interpolation
         self.lazy = lazy
+
+        self.targets = ['imgs']
+        if targets is not None:
+            if not isinstance(targets, (tuple, list)):
+                targets = [targets]
+
+            for target in targets:
+                assert isinstance(target, str)
+
+                if target not in self.targets:
+                    self.targets.append(target)
+
+        self.interpolation = interpolation
+        if isinstance(self.interpolation, (tuple, list)):
+            assert len(self.interpolation) == len(self.targets)
+        else:
+            self.interpolation = [self.interpolation] * len(self.targets)
 
     def __call__(self, results):
         """Performs the Resize augmentation.
@@ -504,19 +603,18 @@ class Resize(object):
         else:
             new_w, new_h = self.scale
 
-        self.scale_factor = np.array([new_w / img_w, new_h / img_h],
-                                     dtype=np.float32)
+        self.scale_factor = np.array([new_w / img_w, new_h / img_h], dtype=np.float32)
 
         results['img_shape'] = (new_h, new_w)
         results['keep_ratio'] = self.keep_ratio
         results['scale_factor'] = results['scale_factor'] * self.scale_factor
 
         if not self.lazy:
-            results['imgs'] = [
-                mmcv.imresize(
-                    img, (new_w, new_h), interpolation=self.interpolation)
-                for img in results['imgs']
-            ]
+            for trg_name, interpolation in zip(self.targets, self.interpolation):
+                results[trg_name] = [
+                    mmcv.imresize(img, (new_w, new_h), interpolation=interpolation)
+                    for img in results[trg_name]
+                ]
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -551,13 +649,24 @@ class Flip(object):
     """
     _directions = ['horizontal', 'vertical']
 
-    def __init__(self, flip_ratio=0.5, direction='horizontal', lazy=False):
+    def __init__(self, flip_ratio=0.5, direction='horizontal', lazy=False, targets=None):
         if direction not in self._directions:
             raise ValueError(f'Direction {direction} is not supported. '
                              f'Currently support ones are {self._directions}')
         self.flip_ratio = flip_ratio
         self.direction = direction
         self.lazy = lazy
+
+        self.targets = ['imgs']
+        if targets is not None:
+            if not isinstance(targets, (tuple, list)):
+                targets = [targets]
+
+            for target in targets:
+                assert isinstance(target, str)
+
+                if target not in self.targets:
+                    self.targets.append(target)
 
     def __call__(self, results):
         """Performs the Flip augmentation.
@@ -566,32 +675,30 @@ class Flip(object):
             results (dict): The resulting dict to be modified and passed
                 to the next transform in pipeline.
         """
+
         _init_lazy_if_proper(results, self.lazy)
+
         modality = results['modality']
         if modality == 'Flow':
             assert self.direction == 'horizontal'
 
-        if np.random.rand() < self.flip_ratio:
-            flip = True
-        else:
-            flip = False
-
+        flip = np.random.rand() < self.flip_ratio
         results['flip'] = flip
         results['flip_direction'] = self.direction
 
         if not self.lazy:
             if flip:
-                for i, img in enumerate(results['imgs']):
-                    mmcv.imflip_(img, self.direction)
-                lt = len(results['imgs'])
-                for i in range(0, lt, 2):
-                    # flow with even indexes are x_flow, which need to be
-                    # inverted when doing horizontal flip
-                    if modality == 'Flow':
-                        results['imgs'][i] = mmcv.iminvert(results['imgs'][i])
+                for trg_name in self.targets:
+                    data = results[trg_name]
+                    for img in data:
+                        mmcv.imflip_(img, self.direction)
 
-            else:
-                results['imgs'] = list(results['imgs'])
+                if modality == 'Flow':
+                    lt = len(results['imgs'])
+                    for i in range(0, lt, 2):
+                        # flow with even indexes are x_flow, which need to be
+                        # inverted when doing horizontal flip
+                        results['imgs'][i] = mmcv.iminvert(results['imgs'][i])
         else:
             lazyop = results['lazy']
             if lazyop['flip']:
@@ -645,18 +752,13 @@ class Normalize(object):
         modality = results['modality']
 
         if modality == 'RGB':
-            n = len(results['imgs'])
-            h, w, c = results['imgs'][0].shape
-            imgs = np.empty((n, h, w, c), dtype=np.float32)
-            for i, img in enumerate(results['imgs']):
-                imgs[i] = img
-
+            imgs = np.array(results['imgs'], dtype=np.float32)
             for img in imgs:
                 mmcv.imnormalize_(img, self.mean, self.std, self.to_bgr)
 
             results['imgs'] = imgs
-            results['img_norm_cfg'] = dict(
-                mean=self.mean, std=self.std, to_bgr=self.to_bgr)
+            results['img_norm_cfg'] = dict(mean=self.mean, std=self.std, to_bgr=self.to_bgr)
+
             return results
         elif modality == 'Flow':
             num_imgs = len(results['imgs'])
@@ -683,6 +785,7 @@ class Normalize(object):
                 to_bgr=self.to_bgr,
                 adjust_magnitude=self.adjust_magnitude)
             results['img_norm_cfg'] = args
+
             return results
         else:
             raise NotImplementedError
@@ -970,4 +1073,418 @@ class MultiGroupCrop(object):
         repr_str = (f'{self.__class__.__name__}'
                     f'(crop_size={self.crop_size}, '
                     f'groups={self.groups})')
+        return repr_str
+
+
+@PIPELINES.register_module()
+class RandomRotate(object):
+    def __init__(self, delta=10.0, prob=0.5, targets=None):
+        if not isinstance(delta, (int, float)):
+            raise TypeError(f'Delta must be an int or float, but got {type(delta)}')
+        if delta <= 0:
+            raise ValueError(f'Delta must be positive, but got {delta}')
+        self.delta = float(delta)
+
+        if not isinstance(prob, (int, float)):
+            raise TypeError(f'Prob must be an int or float, but got {type(prob)}')
+        if prob <= 0 or prob > 1:
+            raise ValueError(f'Prob must be in range (0, 1], but got {prob}')
+        self.prob = prob
+
+        self.targets = ['imgs']
+        if targets is not None:
+            if not isinstance(targets, (tuple, list)):
+                targets = [targets]
+
+            for target in targets:
+                assert isinstance(target, str)
+
+                if target not in self.targets:
+                    self.targets.append(target)
+
+    def __call__(self, results):
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        enable_rotate = np.random.rand(num_clips) < self.prob
+        rotate_delta = np.random.uniform(-self.delta, self.delta, size=num_clips)
+
+        for trg_name in self.targets:
+            trg_data = results[trg_name]
+            assert len(trg_data) == num_clips * clip_len
+
+            processed_data = []
+            for clip_id in range(num_clips):
+                if enable_rotate[clip_id]:
+                    processed_data.extend([
+                        mmcv.imrotate(trg_data[clip_id * clip_len + i], rotate_delta[clip_id])
+                        for i in range(clip_len)
+                    ])
+                else:
+                    processed_data.extend([
+                        trg_data[clip_id * clip_len + i]
+                        for i in range(clip_len)
+                    ])
+
+            results[trg_name] = processed_data
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(delta={self.delta}, prob={self.prob})'
+        return repr_str
+
+
+@PIPELINES.register_module()
+class BlockDropout(object):
+    def __init__(self, scale=0.2, prob=0.1):
+        if not isinstance(scale, (int, float)):
+            raise TypeError(f'Scale must be an int or float, but got {type(scale)}')
+        if scale <= 0 or scale > 1:
+            raise ValueError(f'Scale must be in range(0, 1], but got {scale}')
+        self.scale = float(scale)
+
+        if not isinstance(prob, (int, float)):
+            raise TypeError(f'Prob must be an int or float, but got {type(prob)}')
+        if prob <= 0 or prob > 1:
+            raise ValueError(f'Prob must be in range (0, 1], but got {prob}')
+        self.prob = prob
+
+    @staticmethod
+    def _generate_mask(img_size, p, scale):
+        img_height, img_width = img_size[:2]
+
+        dropout_height = min(img_height, int(1. / scale))
+        dropout_weight = min(img_width, int(1. / scale))
+
+        mask = np.random.random_sample(size=(dropout_height, dropout_weight, 1)) < p
+        mask = mmcv.imresize(mask.astype(np.uint8), (img_width, img_height), interpolation='nearest')
+        mask = mask.reshape((img_height, img_width, 1))
+
+        return mask
+
+    def __call__(self, results):
+        img_data = results['imgs']
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        image_size = img_data[0].shape
+
+        processed_data = []
+        for clip_id in range(num_clips):
+            valid_mask = self._generate_mask(image_size, 1.0 - self.prob, self.scale)
+            processed_data.extend([
+                valid_mask * img_data[clip_id * clip_len + i]
+                for i in range(clip_len)
+            ])
+
+        results['imgs'] = processed_data
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(scale={self.scale}, prob={self.prob})'
+        return repr_str
+
+
+@PIPELINES.register_module()
+class MixUp(object):
+    def __init__(self, root_dir, annot, imgs_root, alpha=0.2):
+        if not isinstance(alpha, (int, float)):
+            raise TypeError(f'Alpha must be an int or float, but got {type(alpha)}')
+        self.alpha = float(alpha)
+
+        annot = osp.join(root_dir, annot)
+        if not osp.exists(annot):
+            raise ValueError(f'Annot does not exist: {annot}')
+
+        imgs_root = osp.join(root_dir, imgs_root)
+        if not osp.exists(imgs_root):
+            raise ValueError(f'Annot does not exist: {imgs_root}')
+
+        self.image_paths = self._parse_image_paths(annot, imgs_root)
+        if len(self.image_paths) == 0:
+            raise ValueError('Found no images for MixUp')
+
+    @staticmethod
+    def _parse_image_paths(annot, imgs_root):
+        return [osp.join(imgs_root, x.strip().split(' ')[0]) for x in open(annot)]
+
+    @staticmethod
+    def _prepare_mixup_image(image_path, trg_size, scale=1.15):
+        image = mmcv.imread(image_path)
+
+        scale_factor = scale * float(min(trg_size)) / float(min(image.shape[:2]))
+        scaled_image = mmcv.imrescale(image, scale_factor)
+
+        h_offset = random.randint(0, scaled_image.shape[0] - trg_size[0])
+        w_offset = random.randint(0, scaled_image.shape[1] - trg_size[1])
+        cropped_image = scaled_image[h_offset:h_offset + trg_size[0],
+                                     w_offset:w_offset + trg_size[1]]
+
+        if np.random.randint(2):
+            cropped_image = mmcv.imflip(cropped_image)
+
+        return cropped_image
+
+    def __call__(self, results):
+        img_data = results['imgs']
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        processed_data = []
+        for clip_id in range(num_clips):
+            alpha = np.random.beta(self.alpha, self.alpha)
+            alpha = alpha if alpha < 0.5 else 1.0 - alpha
+
+            mixup_image_idx = np.random.randint(len(self.image_paths))
+            mixup_image_path = self.image_paths[mixup_image_idx]
+            mixup_image = self._prepare_mixup_image(mixup_image_path, img_data[0].shape[:2])
+
+            scaled_mixup_image = alpha * mixup_image.astype(np.float32)
+
+            for i in range(clip_len):
+                float_img = img_data[clip_id * clip_len + i].astype(np.float32)
+                mixed_image = (1.0 - alpha) * float_img + scaled_mixup_image
+                processed_data.append(mixed_image.clip(0.0, 255.0).astype(np.uint8))
+
+        results['imgs'] = processed_data
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(alpha={self.alpha}, size={len(self.image_paths)})'
+        return repr_str
+
+
+@PIPELINES.register_module()
+class PhotometricDistortion(object):
+    def __init__(self, brightness_range=None, contrast_range=None, saturation_range=None,
+                 hue_delta=None, noise_sigma=None, noise_separate=True, color_scale=None):
+        self.brightness_lower, self.brightness_upper = \
+            brightness_range if brightness_range is not None else (None, None)
+        self.contrast_lower, self.contrast_upper = \
+            contrast_range if contrast_range is not None else (None, None)
+        self.saturation_lower, self.saturation_upper = \
+            saturation_range if saturation_range is not None else (None, None)
+        self.hue_delta = hue_delta if hue_delta is not None else None
+        self.noise_sigma = noise_sigma if noise_sigma is not None else None
+        self.noise_separate = noise_separate
+        self.color_scale_lower, self.color_scale_upper = \
+            color_scale if color_scale is not None else (None, None)
+
+    @property
+    def _with_brightness(self):
+        return self.brightness_lower is not None and self.brightness_upper is not None
+
+    @property
+    def _with_contrast(self):
+        return self.contrast_lower is not None and self.contrast_upper is not None
+
+    @property
+    def _with_saturation(self):
+        return self.saturation_lower is not None and self.saturation_upper is not None
+
+    @property
+    def _with_hue(self):
+        return self.hue_delta is not None
+
+    @property
+    def _with_noise(self):
+        return self.noise_sigma is not None
+
+    @property
+    def _with_color_scale(self):
+        return self.color_scale_lower is not None and self.color_scale_upper is not None
+
+    @staticmethod
+    def _augment(img, brightness_delta, contrast_mode, contrast_alpha, saturation_alpha,
+                 hue_delta, color_scales, noise_sigma, noise_delta):
+        def _clamp_image(_img):
+            _img[_img < 0.0] = 0.0
+            _img[_img > 255.0] = 255.0
+            return _img
+
+        img = img.astype(np.float32)
+
+        # random brightness
+        if brightness_delta is not None:
+            img += brightness_delta
+            img = _clamp_image(img)
+
+        # random contrast
+        # mode == 0 --> do random contrast first
+        # mode == 1 --> do random contrast last
+        if contrast_mode == 1:
+            if contrast_alpha is not None:
+                img *= contrast_alpha
+                img = _clamp_image(img)
+
+        # convert color from BGR to HSV
+        if saturation_alpha is not None or hue_delta is not None:
+            img = mmcv.bgr2hsv(img / 255.)
+
+        # random saturation
+        if saturation_alpha is not None:
+            img[:, :, 1] *= saturation_alpha
+            img[:, :, 1][img[:, :, 1] > 1.0] = 1.0
+            img[:, :, 1][img[:, :, 1] < 0.0] = 0.0
+
+        # random hue
+        if hue_delta is not None:
+            img[:, :, 0] += hue_delta
+            img[:, :, 0][img[:, :, 0] > 360.0] -= 360.0
+            img[:, :, 0][img[:, :, 0] < 0.0] += 360.0
+
+        # convert color from HSV to BGR
+        if saturation_alpha is not None or hue_delta is not None:
+            img = mmcv.hsv2bgr(img) * 255.
+
+        # random contrast
+        if contrast_mode == 0:
+            if contrast_alpha is not None:
+                img *= contrast_alpha
+                img = _clamp_image(img)
+
+        if color_scales is not None:
+            img *= color_scales.reshape((1, 1, -1))
+
+        # gaussian noise
+        if noise_sigma is not None:
+            if noise_delta is None:
+                img += np.random.normal(loc=0.0, scale=noise_sigma, size=img.shape)
+            else:
+                img += noise_delta
+
+        # clamp
+        img = _clamp_image(img)
+
+        return img.astype(np.uint8)
+
+    def _process_sequence(self, img_data):
+        brightness_delta = None
+        if self._with_brightness and np.random.randint(2):
+            images_mean_brightness = [np.mean(img) for img in img_data]
+            image_brightness = np.random.choice(images_mean_brightness)
+
+            brightness_delta_limits = [self.brightness_lower - image_brightness,
+                                       self.brightness_upper - image_brightness]
+
+            # extend the range to support the original brightness
+            if image_brightness < self.brightness_lower:
+                brightness_delta_limits[0] = 0.0
+            elif image_brightness > self.brightness_upper:
+                brightness_delta_limits[1] = 0.0
+
+            brightness_delta = np.random.uniform(brightness_delta_limits[0], brightness_delta_limits[1])
+
+        noise_sigma, noise_delta = None, None
+        if self._with_noise and np.random.randint(2):
+            image_max_brightness = max([np.max(img) for img in img_data])
+            image_min_brightness = min([np.min(img) for img in img_data])
+            brightness_range = image_max_brightness - image_min_brightness
+            max_noise_sigma = self.noise_sigma * float(brightness_range if brightness_range > 0 else 1)
+            noise_sigma = np.random.uniform(0, max_noise_sigma)
+
+            if not self.noise_separate:
+                noise_delta = np.random.normal(loc=0.0, scale=noise_sigma, size=img_data[0].shape)
+
+        contrast_mode = np.random.randint(2)
+        contrast_alpha = np.random.uniform(self.contrast_lower, self.contrast_upper) \
+            if self._with_contrast and np.random.randint(2) else None
+
+        saturation_alpha = np.random.uniform(self.saturation_lower, self.saturation_upper) \
+            if self._with_saturation and np.random.randint(2) else None
+
+        hue_delta = np.random.uniform(-self.hue_delta, self.hue_delta) \
+            if self._with_hue and np.random.randint(2) else None
+
+        color_scales = np.random.uniform(self.color_scale_lower, self.color_scale_upper, size=3) \
+            if self._with_color_scale and np.random.randint(2) else None
+
+        processed_data = [
+            self._augment(img, brightness_delta, contrast_mode, contrast_alpha,
+                          saturation_alpha, hue_delta, color_scales,
+                          noise_sigma, noise_delta)
+            for img in img_data
+        ]
+
+        return processed_data
+
+    def __call__(self, results):
+        if results['modality'] == 'Flow':
+            return results
+
+        img_data = results['imgs']
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        processed_data = []
+        for clip_id in range(num_clips):
+            start = clip_id * clip_len
+            end = start + clip_len
+            processed_data.extend(self._process_sequence(img_data[start:end]))
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__} ('
+        if self._with_brightness:
+            repr_str += f'brightness_range=[{self.brightness_lower}, {self.brightness_upper}], '
+        if self._with_color_scale:
+            repr_str += f'color_scale=[{self.color_scale_lower}, {self.color_scale_upper}], '
+        if self._with_contrast:
+            repr_str += f'contrast_range=[{self.contrast_lower}, {self.contrast_upper}], '
+        if self._with_hue:
+            repr_str += f'hue_delta={self.hue_delta}, '
+        if self._with_noise:
+            repr_str += f'noise_sigma={self.noise_sigma}, '
+        if self._with_saturation:
+            repr_str += f'saturation_range=[{self.saturation_lower}, {self.saturation_upper}], '
+        repr_str += ')'
+        return repr_str
+
+
+@PIPELINES.register_module()
+class MapFlippedLabels(object):
+    def __init__(self, root_dir, map_file):
+        assert isinstance(map_file, dict), 'map_file is expected to be dict'
+
+        self.labels_map = dict()
+        for dataset_name, file_name in map_file.items():
+            map_file = osp.join(root_dir, dataset_name, file_name)
+            if not osp.exists(map_file):
+                raise ValueError(f'Mapping file does not exist: {map_file}')
+
+            self.labels_map[dataset_name] = self.load_labels_map(map_file)
+
+    @staticmethod
+    def load_labels_map(file_path):
+        out_data = dict()
+        with open(file_path) as input_stream:
+            for line in input_stream:
+                line_parts = line.strip().split(' ')
+                if len(line_parts) == 2:
+                    key = int(line_parts[0])
+                    value = int(line_parts[1])
+                    out_data[key] = value
+
+        return out_data
+
+    def __call__(self, results):
+        if 'dataset_name' not in results:
+            raise ValueError('For enabling labels map transform the record'
+                             'should contain \'dataset_name\' field ')
+        dataset_name = results['dataset_name']
+        if results['flip'] and dataset_name in self.labels_map:
+            local_labels_map = self.labels_map[dataset_name]
+
+            old_label = results['label']
+            if old_label in local_labels_map:
+                results['label'] = local_labels_map[old_label]
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}'
         return repr_str

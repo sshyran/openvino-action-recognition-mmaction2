@@ -48,13 +48,13 @@ def test_base_recognizer():
         # "average_clips" must defined in test_cfg keys
         wrong_test_cfg = dict(clip='score')
         recognizer = ExampleRecognizer(None, wrong_test_cfg)
-        recognizer.average_clip(cls_score)
+        recognizer._average_clip(cls_score)
 
     with pytest.raises(ValueError):
         # unsupported average clips type
         wrong_test_cfg = dict(average_clips='softmax')
         recognizer = ExampleRecognizer(None, wrong_test_cfg)
-        recognizer.average_clip(cls_score)
+        recognizer._average_clip(cls_score)
 
     with pytest.raises(ValueError):
         # Label should not be None
@@ -64,13 +64,13 @@ def test_base_recognizer():
     # average_clips='score'
     test_cfg = dict(average_clips='score')
     recognizer = ExampleRecognizer(None, test_cfg)
-    score = recognizer.average_clip(cls_score)
+    score = recognizer._average_clip(cls_score)
     assert torch.equal(score, cls_score.mean(dim=0, keepdim=True))
 
     # average_clips='prob'
     test_cfg = dict(average_clips='prob')
     recognizer = ExampleRecognizer(None, test_cfg)
-    score = recognizer.average_clip(cls_score)
+    score = recognizer._average_clip(cls_score)
     assert torch.equal(score,
                        F.softmax(cls_score, dim=1).mean(dim=0, keepdim=True))
 

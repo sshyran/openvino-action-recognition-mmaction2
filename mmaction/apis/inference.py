@@ -34,6 +34,7 @@ def init_recognizer(config,
     elif not isinstance(config, mmcv.Config):
         raise TypeError('config must be a filename or Config object, '
                         f'but got {type(config)}')
+
     if ((use_frames and config.dataset_type != 'RawframeDataset')
             or (not use_frames and config.dataset_type != 'VideoDataset')):
         input_type = 'rawframes' if use_frames else 'video'
@@ -47,8 +48,10 @@ def init_recognizer(config,
     if checkpoint is not None:
         load_checkpoint(model, checkpoint, map_location=device)
     model.cfg = config
+
     model.to(device)
     model.eval()
+
     return model
 
 
@@ -117,4 +120,5 @@ def inference_recognizer(model, video_path, label_path, use_frames=False):
     score_sorted = sorted(score_tuples, key=itemgetter(1), reverse=True)
 
     top5_label = score_sorted[:5]
+
     return top5_label

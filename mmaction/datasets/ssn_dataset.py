@@ -159,12 +159,16 @@ class SSNDataset(BaseDataset):
             Default: False.
     """
 
+    allowed_metrics = ['mAP']
+
     def __init__(self,
+                 source,
+                 root_dir,
                  ann_file,
+                 data_subdir,
                  pipeline,
                  train_cfg,
                  test_cfg,
-                 data_prefix,
                  test_mode=False,
                  filename_tmpl='img_{:05d}.jpg',
                  start_index=1,
@@ -178,15 +182,19 @@ class SSNDataset(BaseDataset):
                  frame_interval=1,
                  filter_gt=True,
                  use_regression=True,
-                 verbose=False):
+                 verbose=False,
+                 logger=None):
         self.logger = get_root_logger()
         super().__init__(
+            source,
+            root_dir,
             ann_file,
+            data_subdir,
             pipeline,
-            data_prefix=data_prefix,
             test_mode=test_mode,
             start_index=start_index,
-            modality=modality)
+            modality=modality,
+            logger=logger)
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.assigner = train_cfg.ssn.assigner
@@ -275,24 +283,24 @@ class SSNDataset(BaseDataset):
             self.logger.info(
                 f'SSNDataset: proposal file {self.proposal_file} parsed.')
 
-    def load_annotations(self):
+    def _load_annotations(self, ann_file, data_prefix=None):
         """Load annotation file to get video information."""
         video_infos = []
-        if 'normalized_' in self.ann_file:
-            self.proposal_file = self.ann_file.replace('normalized_', '')
+        if 'normalized_' in ann_file:
+            self.proposal_file = ann_file.replace('normalized_', '')
             if not osp.exists(self.proposal_file):
                 raise Exception(f'Please refer to `$MMACTION2/tools/data` to'
-                                f'denormalize {self.ann_file}.')
+                                f'denormalize {ann_file}.')
         else:
-            self.proposal_file = self.ann_file
+            self.proposal_file = ann_file
         proposal_infos = load_localize_proposal_file(self.proposal_file)
         # proposal_info:[video_id, num_frames, gt_list, proposal_list]
         # gt_list member: [label, start_frame, end_frame]
         # proposal_list member: [label, best_iou, overlap_self,
         #                        start_frame, end_frame]
         for proposal_info in proposal_infos:
-            if self.data_prefix is not None:
-                frame_dir = osp.join(self.data_prefix, proposal_info[0])
+            if data_prefix is not None:
+                frame_dir = osp.join(data_prefix, proposal_info[0])
             num_frames = int(proposal_info[1])
             # gts:start, end, num_frames, class_label, tIoU=1
             gts = []
@@ -398,11 +406,11 @@ class SSNDataset(BaseDataset):
 
         return detections
 
-    def evaluate(self,
-                 results,
-                 metrics='mAP',
-                 eval_dataset='thumos14',
-                 **kwargs):
+    def _evaluate(self,
+                  results,
+                  metrics='mAP',
+                  eval_dataset='thumos14',
+                  **kwargs):
         """Evaluation in SSN proposal dataset.
 
         Args:
@@ -414,17 +422,6 @@ class SSNDataset(BaseDataset):
         Returns:
             dict: Evaluation results for evaluation metrics.
         """
-        if not isinstance(results, list):
-            raise TypeError(f'results must be a list, but got {type(results)}')
-        assert len(results) == len(self), (
-            f'The length of results is not equal to the dataset len: '
-            f'{len(results)} != {len(self)}')
-
-        metrics = metrics if isinstance(metrics, (list, tuple)) else [metrics]
-        allowed_metrics = ['mAP']
-        for metric in metrics:
-            if metric not in allowed_metrics:
-                raise KeyError(f'metric {metric} is not supported')
 
         detections = self.results_to_detections(results, **self.evaluater)
 

@@ -1,6 +1,7 @@
 import platform
 import random
 from functools import partial
+from copy import deepcopy
 
 import numpy as np
 from mmcv.parallel import collate
@@ -21,22 +22,59 @@ if platform.system() != 'Windows':
     resource.setrlimit(resource.RLIMIT_NOFILE, (soft_limit, hard_limit))
 
 
-def build_dataset(cfg, default_args=None):
+def _to_list(value, num=None):
+    if isinstance(value, (tuple, list)):
+        if num is not None:
+            assert len(value) == num, f'Invalid len of argument: {len(value)} but expected {num}'
+
+        return value
+    else:
+        return [value] * (num if num is not None else 1)
+
+
+def build_dataset(cfg, target, default_args=None):
     """Build a dataset from config dict.
 
     Args:
         cfg (dict): Config dict. It should at least contain the key "type".
+        target (str): Target name. One of : "train", "val", "test".
         default_args (dict, optional): Default initialization arguments.
             Default: None.
 
     Returns:
         Dataset: The constructed dataset.
     """
-    if cfg['type'] == 'RepeatDataset':
-        dataset = RepeatDataset(
-            build_dataset(cfg['dataset'], default_args), cfg['times'])
-    else:
-        dataset = build_from_cfg(cfg, DATASETS, default_args)
+
+    source_cfg = cfg['dataset'] if hasattr(cfg, 'type') and cfg['type'] == 'RepeatDataset' else cfg
+    target_cfg = source_cfg[target]
+
+    assert 'root_dir' in source_cfg, 'Data config does not contain \'root_dir\' field'
+    assert 'source' in target_cfg, 'Data config does not contain \'sources\' field'
+    assert 'ann_file' in target_cfg, 'Data config does not contain \'ann_file\' field'
+
+    sources = _to_list(target_cfg['source'])
+    num_sources = len(sources)
+
+    ann_files = _to_list(target_cfg['ann_file'], num_sources)
+    shared_info = {k: _to_list(v, num_sources) for k, v in source_cfg.get('shared', dict()).items()}
+
+    datasets = []
+    for dataset_id in range(num_sources):
+        dataset_cfg = deepcopy(target_cfg)
+
+        dataset_cfg['root_dir'] = source_cfg['root_dir']
+        dataset_cfg['source'] = sources[dataset_id]
+        dataset_cfg['ann_file'] = ann_files[dataset_id]
+        for shared_key, shared_value in shared_info.items():
+            dataset_cfg[shared_key] = shared_value[dataset_id]
+
+        datasets.append(build_from_cfg(dataset_cfg, DATASETS, default_args))
+
+    dataset = sum(datasets)
+
+    if hasattr(cfg, 'type') and cfg['type'] == 'RepeatDataset':
+        dataset = RepeatDataset(dataset, cfg['times'])
+
     return dataset
 
 
