@@ -32,11 +32,12 @@ def update_config(cfg, args):
     else:
         cfg.test_cfg.average_clips = args.average_clips
 
-    cfg.data.train.test_mode = True
-    cfg.data.val.test_mode = True
     cfg.data.test.test_mode = True
 
-    cfg.data.train.transforms = None
+    normalize_idx = [i for i, v in enumerate(cfg.data.test.pipeline) if v['type'] == 'Normalize'][0]
+    cfg.data.test.pipeline[normalize_idx]['mean'] = [0.0, 0.0, 0.0]
+    cfg.data.test.pipeline[normalize_idx]['std'] = [1.0, 1.0, 1.0]
+    cfg.data.test.pipeline[normalize_idx]['to_bgr'] = False
 
     return cfg
 
