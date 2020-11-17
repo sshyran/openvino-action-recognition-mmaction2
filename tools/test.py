@@ -119,17 +119,19 @@ def main():
 
     rank, _ = get_dist_info()
 
-    # build the dataloader
+    # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
     if rank == 0:
         print(f'Test datasets:\n{str(dataset)}')
 
+    # build the dataloader
     data_loader = build_dataloader(
         dataset,
         videos_per_gpu=1,
         workers_per_gpu=cfg.data.workers_per_gpu,
         dist=distributed,
-        shuffle=False)
+        shuffle=False
+    )
 
     # build the model and load checkpoint
     class_sizes = dataset.class_sizes()

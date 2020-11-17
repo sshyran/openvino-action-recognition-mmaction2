@@ -1,7 +1,6 @@
 from abc import ABCMeta
 from collections import defaultdict
 
-import numpy as np
 from mmcv.utils import print_log
 
 from ..core import (mean_class_accuracy, top_k_accuracy, mean_top_k_accuracy,
