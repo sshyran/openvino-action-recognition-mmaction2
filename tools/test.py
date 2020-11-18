@@ -5,14 +5,14 @@ import mmcv
 import torch
 from mmcv.cnn import fuse_conv_bn
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import get_dist_info, init_dist, load_checkpoint
+from mmcv.runner import get_dist_info, init_dist
 from mmcv.runner.fp16_utils import wrap_fp16_model
 
 from mmaction.apis import multi_gpu_test, single_gpu_test
 from mmaction.datasets import build_dataloader, build_dataset
 from mmaction.models import build_model
 from mmaction.utils import ExtendedDictAction
-from mmaction.core.utils import propagate_root_dir
+from mmaction.core.utils import propagate_root_dir, load_checkpoint
 
 
 def parse_args():
@@ -139,7 +139,7 @@ def main():
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
-    load_checkpoint(model, args.checkpoint, map_location='cpu')
+    load_checkpoint(model, args.checkpoint, map_location='cpu', force_matching=True)
 
     if args.fuse_conv_bn:
         model = fuse_conv_bn(model)

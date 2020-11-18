@@ -1,6 +1,6 @@
 import torch
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import DistSamplerSeedHook, EpochBasedRunner, OptimizerHook, build_optimizer
+from mmcv.runner import DistSamplerSeedHook, EpochBasedRunner, build_optimizer
 from mmcv.runner.hooks import Fp16OptimizerHook
 
 from ..core import DistEvalHook, EvalHook, load_checkpoint, DistOptimizerHook
