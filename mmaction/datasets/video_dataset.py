@@ -34,7 +34,6 @@ class VideoDataset(RecognitionDataset):
             different filename format. However, when taking videos as input,
             it should be set to 0, since frames loaded from videos count
             from 0. Default: 0.
-        **kwargs: Keyword arguments for ``BaseDataset``.
     """
 
     def __init__(self,
@@ -82,4 +81,5 @@ class VideoDataset(RecognitionDataset):
                     filename=filename,
                     label=onehot if self.multi_class else label
                 ))
+
         return video_infos

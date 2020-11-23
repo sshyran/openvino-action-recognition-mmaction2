@@ -428,7 +428,7 @@ class ResNet3dSlowFast(nn.Module):
             slow_pathway['speed_ratio'] = speed_ratio
             slow_pathway['channel_ratio'] = channel_ratio
 
-        self.slow_path = build_pathway(slow_pathway)
+        self.slow_path = build_pathway(slow_plathway)
         self.fast_path = build_pathway(fast_pathway)
 
     def init_weights(self):

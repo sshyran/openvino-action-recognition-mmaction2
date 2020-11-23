@@ -148,13 +148,11 @@ class SampleFrames(object):
         total_frames = results['total_frames']
 
         clip_offsets = self._sample_clips(total_frames)
-        frame_inds = clip_offsets[:, None] + np.arange(
-            self.clip_len)[None, :] * self.frame_interval
-        frame_inds = np.concatenate(frame_inds)
+        frame_inds = np.arange(self.clip_len)[None, :] * self.frame_interval
+        frame_inds = np.concatenate(clip_offsets[:, None] + frame_inds)
 
         if self.temporal_jitter:
-            perframe_offsets = np.random.randint(
-                self.frame_interval, size=len(frame_inds))
+            perframe_offsets = np.random.randint(self.frame_interval, size=len(frame_inds))
             frame_inds += perframe_offsets
 
         frame_inds = frame_inds.reshape((-1, self.clip_len))
@@ -325,6 +323,66 @@ class DenseSampleFrames(SampleFrames):
             clip_offsets.extend((base_offsets + start_idx) % num_frames)
         clip_offsets = np.array(clip_offsets)
         return clip_offsets
+
+
+@PIPELINES.register_module()
+class SparseSampleFrames(object):
+    def __init__(self,
+                 clip_len,
+                 test_mode=False,
+                 start_index=None):
+
+        self.clip_len = clip_len
+        self.test_mode = test_mode
+
+        if start_index is not None:
+            warnings.warn('No longer support "start_index" in "SampleFrames", '
+                          'it should be set in dataset class, see this pr: '
+                          'https://github.com/open-mmlab/mmaction2/pull/89')
+
+    def _get_train_inds(self, num_frames):
+        if num_frames >= self.clip_len:
+            avg_interval = float(num_frames) / float(self.clip_len)
+            base_offsets = np.arange(self.clip_len) * avg_interval
+            frame_offsets = (base_offsets + np.random.rand(self.clip_len) * avg_interval).astype(np.int)
+        else:
+            frame_offsets = np.sort(np.random.randint(num_frames, size=self.clip_len))
+
+        return frame_offsets
+
+    def _get_test_inds(self, num_frames):
+        avg_interval = float(num_frames) / float(self.clip_len)
+
+        if num_frames >= self.clip_len:
+            base_offsets = np.arange(self.clip_len) * avg_interval
+            frame_offsets = (base_offsets + 0.5 * avg_interval).astype(np.int)
+        else:
+            frame_offsets = np.arange(num_frames)
+
+        return frame_offsets
+
+    def __call__(self, results):
+        total_frames = results['total_frames']
+
+        if self.test_mode:
+            frame_inds = self._get_test_inds(total_frames)
+        else:
+            frame_inds = self._get_train_inds(total_frames)
+
+        start_index = results['start_index']
+        frame_inds = frame_inds + start_index
+
+        results['frame_inds'] = frame_inds.astype(np.int)
+        results['clip_len'] = self.clip_len
+        results['frame_interval'] = 1
+        results['num_clips'] = 1
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'clip_len={self.clip_len})'
+        return repr_str
 
 
 @PIPELINES.register_module()
@@ -850,16 +908,17 @@ class DecordInit(object):
         try:
             import decord
         except ImportError:
-            raise ImportError(
-                'Please run "pip install decord" to install Decord first.')
+            raise ImportError('Please run "pip install decord" to install Decord first.')
 
         if self.file_client is None:
             self.file_client = FileClient(self.io_backend, **self.kwargs)
 
         file_obj = io.BytesIO(self.file_client.get(results['filename']))
         container = decord.VideoReader(file_obj, num_threads=self.num_threads)
+
         results['video_reader'] = container
         results['total_frames'] = len(container)
+
         return results
 
 
