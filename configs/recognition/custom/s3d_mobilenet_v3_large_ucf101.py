@@ -25,7 +25,7 @@ model = dict(
         width_mult=1.0,
         pool1_stride_t=1,
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
-        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
+        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         # use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
         attention_cfg=dict(
@@ -125,7 +125,7 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SparseSampleFrames', clip_len=16, num_clips=2),
+    dict(type='SparseSampleFrames', clip_len=8, num_clips=2),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
@@ -150,7 +150,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SparseSampleFrames', clip_len=16, test_mode=True),
+    dict(type='SparseSampleFrames', clip_len=8, test_mode=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=input_img_size),
