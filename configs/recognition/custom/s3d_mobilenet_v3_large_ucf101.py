@@ -110,8 +110,8 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=False, drop_p=0.33),
-    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
+    self_challenging=dict(enable=True, drop_p=0.33),
+    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -125,7 +125,7 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SparseSampleFrames', clip_len=8),
+    dict(type='SparseSampleFrames', clip_len=8, num_clips=2),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),

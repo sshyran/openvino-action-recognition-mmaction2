@@ -329,10 +329,12 @@ class DenseSampleFrames(SampleFrames):
 class SparseSampleFrames(object):
     def __init__(self,
                  clip_len,
+                 num_clips=1,
                  test_mode=False,
                  start_index=None):
 
         self.clip_len = clip_len
+        self.num_clips = num_clips
         self.test_mode = test_mode
 
         if start_index is not None:
@@ -361,21 +363,29 @@ class SparseSampleFrames(object):
 
         return frame_offsets
 
+    def _get_inds(self, num_frames):
+        if self.test_mode:
+            frame_inds = self._get_test_inds(num_frames)
+        else:
+            frame_inds = self._get_train_inds(num_frames)
+
+        return frame_inds
+
     def __call__(self, results):
         total_frames = results['total_frames']
-
-        if self.test_mode:
-            frame_inds = self._get_test_inds(total_frames)
-        else:
-            frame_inds = self._get_train_inds(total_frames)
-
         start_index = results['start_index']
-        frame_inds = frame_inds + start_index
 
-        results['frame_inds'] = frame_inds.astype(np.int)
+        all_frame_inds = []
+        for clip_id in range(self.num_clips):
+            frame_inds = self._get_inds(total_frames)
+            frame_inds = np.array(frame_inds).astype(np.int)
+            frame_inds = np.where(frame_inds < 0, frame_inds, frame_inds + start_index)
+            all_frame_inds.append(frame_inds)
+
+        results['frame_inds'] = np.concatenate(all_frame_inds)
         results['clip_len'] = self.clip_len
         results['frame_interval'] = 1
-        results['num_clips'] = 1
+        results['num_clips'] = self.num_clips
 
         return results
 
