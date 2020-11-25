@@ -108,7 +108,7 @@ def main():
         out = list()
         out.append({'key': 'size', 'display_name': 'Size', 'value': float(params.split(' ')[0]), 'unit': 'Mp'})
         out.append({'key': 'complexity', 'display_name': 'Complexity', 'value': 2 * float(macs.split(' ')[0]),
-                    'unit': 'MACs'})
+                    'unit': 'GMac'})
         with open(args.out, 'w') as write_file:
             json.dump(out, write_file, indent=4)
 
