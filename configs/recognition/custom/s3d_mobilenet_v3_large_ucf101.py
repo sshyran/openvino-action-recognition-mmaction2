@@ -25,7 +25,7 @@ model = dict(
         width_mult=1.0,
         pool1_stride_t=1,
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
-        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        temporal_strides=(1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         # use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
         attention_cfg=dict(
@@ -111,7 +111,7 @@ model = dict(
 # model training and testing settings
 train_cfg = dict(
     self_challenging=dict(enable=True, drop_p=0.33),
-    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
+    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -125,7 +125,7 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SparseSampleFrames', clip_len=8, num_clips=2),
+    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, temporal_jitter=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
@@ -142,7 +142,7 @@ train_pipeline = [
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
-    dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
+    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -150,7 +150,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SparseSampleFrames', clip_len=8, test_mode=True),
+    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, test_mode=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=input_img_size),
