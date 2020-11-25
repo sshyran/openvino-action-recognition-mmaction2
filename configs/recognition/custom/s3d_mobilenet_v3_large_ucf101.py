@@ -126,7 +126,7 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, temporal_jitter=False),
+    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, temporal_jitter=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
