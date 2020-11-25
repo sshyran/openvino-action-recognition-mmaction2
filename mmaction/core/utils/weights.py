@@ -68,7 +68,7 @@ def inflate_weights(model, state_dict_2d, logger=None):
         table_data = [header] + shape_mismatch_pairs
         table = AsciiTable(table_data)
         if logger is not None:
-            logger.info('These keys have mismatched shape:\n' + table.table)
+            logger.warning('These keys have mismatched shape:\n' + table.table)
 
     if copied_pairs:
         header = ['key', 'shape']
