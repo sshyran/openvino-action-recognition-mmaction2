@@ -4,9 +4,9 @@ import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import (ConvModule, Swish, build_activation_layer, constant_init,
                       kaiming_init)
-from mmcv.runner import load_checkpoint
 from mmcv.utils import _BatchNorm
 
+from ...core.utils import load_checkpoint, inflate_weights
 from ...utils import get_root_logger
 from ..registry import BACKBONES
 
@@ -165,7 +165,7 @@ class BlockX3D(nn.Module):
         return out
 
 
-# We do not support initialize with 2D pretrain weight for X3D
+# We do not support initialize with 2D pretrained weights for X3D
 @BACKBONES.register_module()
 class X3D(nn.Module):
     """X3D backbone. https://arxiv.org/pdf/2004.04730.pdf.
@@ -211,6 +211,7 @@ class X3D(nn.Module):
                  gamma_b=1.0,
                  gamma_d=1.0,
                  pretrained=None,
+                 pretrained2d=False,
                  in_channels=3,
                  num_stages=4,
                  spatial_strides=(2, 2, 2, 2),
@@ -226,11 +227,13 @@ class X3D(nn.Module):
                  zero_init_residual=True,
                  **kwargs):
         super().__init__()
+
         self.gamma_w = gamma_w
         self.gamma_b = gamma_b
         self.gamma_d = gamma_d
 
         self.pretrained = pretrained
+        self.pretrained2d = pretrained2d
         self.in_channels = in_channels
         # Hard coded, can be changed by gamma_w
         self.base_channels = 24
@@ -245,7 +248,7 @@ class X3D(nn.Module):
         ]
 
         self.num_stages = num_stages
-        assert num_stages >= 1 and num_stages <= 4
+        assert 1 <= num_stages <= 4
         self.spatial_strides = spatial_strides
         assert len(spatial_strides) == num_stages
         self.frozen_stages = frozen_stages
@@ -288,7 +291,8 @@ class X3D(nn.Module):
                 conv_cfg=self.conv_cfg,
                 act_cfg=self.act_cfg,
                 with_cp=with_cp,
-                **kwargs)
+                **kwargs
+            )
             self.layer_inplanes = inplanes
             layer_name = f'layer{i + 1}'
             self.add_module(layer_name, res_layer)
@@ -304,10 +308,12 @@ class X3D(nn.Module):
             bias=False,
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
-            act_cfg=self.act_cfg)
+            act_cfg=self.act_cfg
+        )
         self.feat_dim = int(self.feat_dim * self.gamma_b)
 
-    def _round_width(self, width, multiplier, min_depth=8, divisor=8):
+    @staticmethod
+    def _round_width(width, multiplier, min_depth=8, divisor=8):
         """Round width of filters based on width multiplier."""
         if not multiplier:
             return width
@@ -320,7 +326,8 @@ class X3D(nn.Module):
             new_filters += divisor
         return int(new_filters)
 
-    def _round_repeats(self, repeats, multiplier):
+    @staticmethod
+    def _round_repeats(repeats, multiplier):
         """Round number of layers based on depth multiplier."""
         multiplier = multiplier
         if not multiplier:
@@ -431,6 +438,7 @@ class X3D(nn.Module):
     def _make_stem_layer(self):
         """Construct the stem layers consists of a conv+norm+act module and a
         pooling layer."""
+
         self.conv1_s = ConvModule(
             self.in_channels,
             self.base_channels,
@@ -440,7 +448,8 @@ class X3D(nn.Module):
             bias=False,
             conv_cfg=self.conv_cfg,
             norm_cfg=None,
-            act_cfg=None)
+            act_cfg=None
+        )
         self.conv1_t = ConvModule(
             self.base_channels,
             self.base_channels,
@@ -451,7 +460,8 @@ class X3D(nn.Module):
             bias=False,
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
-            act_cfg=self.act_cfg)
+            act_cfg=self.act_cfg
+        )
 
     def _freeze_stages(self):
         """Prevent all the parameters from being optimized before
@@ -470,31 +480,31 @@ class X3D(nn.Module):
             for param in m.parameters():
                 param.requires_grad = False
 
-    def init_weights(self):
-        """Initiate the parameters either from existing checkpoint or from
-        scratch."""
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv3d):
+                kaiming_init(m)
+            elif isinstance(m, _BatchNorm):
+                constant_init(m, 1)
 
-        if isinstance(self.pretrained, str):
-            logger = get_root_logger()
-            logger.info(f'load model from: {self.pretrained}')
-
-            load_checkpoint(self, self.pretrained, strict=False, logger=logger)
-
-        elif self.pretrained is None:
+        if self.zero_init_residual:
             for m in self.modules():
-                if isinstance(m, nn.Conv3d):
-                    kaiming_init(m)
-                elif isinstance(m, _BatchNorm):
-                    constant_init(m, 1)
+                if isinstance(m, BlockX3D):
+                    constant_init(m.conv3.bn, 0)
 
-            if self.zero_init_residual:
-                for m in self.modules():
-                    if isinstance(m, BlockX3D):
-                        constant_init(m.conv3.bn, 0)
+    def init_weights(self):
+        if isinstance(self.pretrained, str):
+            logger = get_root_logger(log_level='INFO')
+            if self.pretrained2d:
+                inflate_weights(self, self.pretrained, logger=logger)
+            else:
+                load_checkpoint(self, self.pretrained, strict=False, logger=logger)
+        elif self.pretrained is None:
+            self._init_weights()
         else:
             raise TypeError('pretrained must be a str or None')
 
-    def forward(self, x):
+    def forward(self, x, return_extra_data=False):
         """Defines the computation performed at every call.
 
         Args:
@@ -505,14 +515,19 @@ class X3D(nn.Module):
             samples extracted by the backbone.
         """
 
-        x = self.conv1_s(x)
-        x = self.conv1_t(x)
+        y = self.conv1_s(x)
+        y = self.conv1_t(y)
         for i, layer_name in enumerate(self.res_layers):
             res_layer = getattr(self, layer_name)
-            x = res_layer(x)
-        x = self.conv5(x)
+            y = res_layer(y)
+        y = self.conv5(y)
 
-        return x
+        outs = [y]
+
+        if return_extra_data:
+            return outs, dict()
+        else:
+            return outs
 
     def train(self, mode=True):
         """Set the optimization status when training."""
