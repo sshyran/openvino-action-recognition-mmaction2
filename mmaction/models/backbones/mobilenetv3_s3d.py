@@ -1,14 +1,13 @@
-import logging
-
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.runner import load_checkpoint, _load_checkpoint
 from mmcv.cnn import constant_init, kaiming_init
 
+from ...core.utils import load_checkpoint, inflate_weights
 from ...core.ops import (Dropout, Conv3d, HSigmoid, HSwish, conv_kxkxk_bn, conv_1xkxk_bn,
                          conv_kx1x1_bn, conv_1x1x1_bn, gumbel_sigmoid)
+from ...utils import get_root_logger
 from ..registry import BACKBONES
 from ..losses import TotalVarianceLoss
 from .mobilenetv3 import make_divisible, MobileNetV3
@@ -228,11 +227,15 @@ class InvertedResidual_S3D(nn.Module):
 
             # dw
             if dw_temporal:
-                conv_layers.extend(conv_kxkxk_bn(hidden_dim, hidden_dim, spatial_kernels, temporal_kernels,
-                                                 spatial_stride, temporal_stride, groups=hidden_dim, norm=norm))
+                conv_layers.extend(conv_kxkxk_bn(
+                    hidden_dim, hidden_dim, spatial_kernels, temporal_kernels,
+                    spatial_stride, temporal_stride, groups=hidden_dim, norm=norm
+                ))
             else:
-                conv_layers.extend(conv_1xkxk_bn(hidden_dim, hidden_dim, spatial_kernels, spatial_stride,
-                                                 groups=hidden_dim, norm=norm))
+                conv_layers.extend(conv_1xkxk_bn(
+                    hidden_dim, hidden_dim, spatial_kernels, spatial_stride,
+                    groups=hidden_dim, norm=norm
+                ))
 
             # Squeeze-and-Excite
             conv_layers.extend([
@@ -480,57 +483,11 @@ class MobileNetV3_S3D(nn.Module):
                 if hasattr(m, 'bias') and m.bias is not None:
                     m.bias.data.zero_()
 
-    def _inflate_weights(self, logger):
-        def _is_compatible(shape_a, shape_b):
-            return shape_a[0] == shape_b[0]\
-                   and shape_a[1] == shape_b[1]\
-                   and shape_a[3] == shape_b[3]\
-                   and shape_a[4] == shape_b[4]
-
-        state_dict_2d = _load_checkpoint(self.pretrained)
-        if 'state_dict' in state_dict_2d:
-            state_dict_2d = state_dict_2d['state_dict']
-
-        for name, module in self.named_modules():
-            if isinstance(module, nn.Conv3d) and name in state_dict_2d:
-                old_weight = state_dict_2d[name + '.weight'].data
-                assert len(old_weight.shape) in [2, 4]
-
-                if len(old_weight.shape) == 2:
-                    old_weight = old_weight.unsqueeze(2).unsqueeze(3)
-                old_weight = old_weight.unsqueeze(2)
-
-                if not _is_compatible(old_weight.shape, module.weight.data.shape):
-                    logging.warning('{}. Conv3D not loaded from weights'.format(name))
-                    continue
-
-                new_weight = old_weight.expand_as(module.weight) / module.weight.data.shape[2]
-                module.weight.data.copy_(new_weight)
-                logging.info("{}.weight loaded from weights file into {}".format(name, new_weight.shape))
-
-                if hasattr(module, 'bias') and module.bias is not None:
-                    new_bias = state_dict_2d[name + '.bias'].data
-                    module.bias.data.copy_(new_bias)
-                    logging.info("{}.bias loaded from weights file into {}".format(name, new_bias.shape))
-            elif isinstance(module, nn.BatchNorm3d) and name in state_dict_2d:
-                for attr_name in ['weight', 'bias', 'running_mean', 'running_var']:
-                    old_attr = state_dict_2d[name + '.' + attr_name].data
-
-                    logging.info("{}.{} loaded from weights file into {}"
-                                 .format(name, attr_name, old_attr.shape))
-                    new_attr = getattr(module, attr_name)
-                    new_attr.data.copy_(old_attr)
-            else:
-                if isinstance(module, nn.Conv3d):
-                    logging.warning('{}. Conv3D not loaded from weights'.format(name))
-                elif isinstance(module, nn.BatchNorm3d):
-                    logging.warning('{}. BN3D not loaded from weights'.format(name))
-
     def init_weights(self):
         if isinstance(self.pretrained, str):
-            logger = logging.getLogger()
+            logger = get_root_logger(log_level='INFO')
             if self.pretrained2d:
-                self._inflate_weights(logger)
+                inflate_weights(self, self.pretrained, logger=logger)
             else:
                 load_checkpoint(self, self.pretrained, strict=False, logger=logger)
         elif self.pretrained is None:

@@ -70,8 +70,6 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
             raise RuntimeError(err_msg)
         elif logger is not None:
             logger.warning(err_msg)
-        else:
-            print(err_msg)
 
     ok_message = []
     if converted_pairs:
@@ -85,8 +83,6 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
         ok_message = '\n'.join(ok_message)
         if logger is not None:
             logger.info(ok_message)
-        else:
-            print(ok_message)
 
     warning_msg = []
     if shape_casted_pairs:
@@ -101,8 +97,6 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
         warning_msg = '\n'.join(warning_msg)
         if logger is not None:
             logger.warning(warning_msg)
-        else:
-            print(warning_msg)
 
 
 def load_checkpoint(model, filename, map_location=None, strict=False, logger=None,
