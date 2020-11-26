@@ -173,9 +173,10 @@ class ClsHead(BaseHead):
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
-        for extra_loss_name, extra_loss in self.losses_extra.items():
-            losses[extra_loss_name.replace('_', '/') + name] = extra_loss(
-                norm_embd, cls_score, labels)
+        if self.losses_extra is not None:
+            for extra_loss_name, extra_loss in self.losses_extra.items():
+                losses[extra_loss_name.replace('_', '/') + name] = extra_loss(
+                    norm_embd, cls_score, labels)
 
         if self.with_embedding:
             losses.update(self.fc_angular.loss(name))
