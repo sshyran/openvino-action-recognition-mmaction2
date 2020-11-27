@@ -1,6 +1,6 @@
 from .backbones import (ResNet, ResNet2Plus1d, ResNet3d, ResNet3dCSN,
                         ResNet3dSlowFast, ResNet3dSlowOnly, ResNetTIN,
-                        ResNetTSM)
+                        ResNetTSM, MobileNetV3, MobileNetV3_S3D, MobileNetV3_LGD, X3D)
 from .builder import (build_backbone, build_head, build_localizer, build_model,
                       build_recognizer, build_scheduler, build_params_manager,
                       build_reducer)
@@ -26,6 +26,7 @@ __all__ = [
     'recognizer2d', 'recognizer3d', 'ResNet', 'ResNet3d',
     'ResNet2Plus1d', 'I3DHead', 'TSNHead', 'TSMHead', 'BaseHead', 'ClsHead',
     'BaseRecognizer', 'LOSSES', 'CrossEntropyLoss', 'NLLLoss', 'ResNetTSM',
+    'MobileNetV3', 'MobileNetV3_S3D', 'MobileNetV3_LGD', 'X3D',
     'ResNet3dSlowFast', 'SlowFastHead', 'Conv2plus1d', 'ResNet3dSlowOnly',
     'BCELossWithLogits', 'LOCALIZERS', 'build_localizer', 'PEM', 'TEM',
     'AMSoftmaxLoss', 'ArcLoss', 'DSoftmaxLoss', 'ScaledCrossEntropyLoss',

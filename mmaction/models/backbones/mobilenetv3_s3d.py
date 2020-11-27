@@ -321,6 +321,7 @@ class MobileNetV3_S3D(nn.Module):
 
         self.bn_eval = bn_eval
         self.bn_frozen = bn_frozen
+        self.weight_norm = weight_norm
 
         if input_bn:
             self.input_bn = nn.BatchNorm3d(num_input_layers)
@@ -329,6 +330,7 @@ class MobileNetV3_S3D(nn.Module):
 
         # building first layer
         input_channel = make_divisible(16 * width_mult, 8)
+        self.channels_num = [input_channel]
 
         first_stage_layers = [*conv_1xkxk_bn(num_input_layers, input_channel,
                                              k=3, spatial_stride=2, norm=weight_norm)]
@@ -341,20 +343,16 @@ class MobileNetV3_S3D(nn.Module):
         num_layers_before = len(layers)
 
         attention_block = ResidualAttention
-        # attention_block = DynamicAttention
         attention_cfg = dict() if attention_cfg is None else attention_cfg
         residual_block = InvertedResidual_S3D
 
         # building inverted residual blocks
-        self.attentions = nn.ModuleDict()
-        self.roi_aligns = nn.ModuleDict()
-        skip_strides = False
+        self.attentions, self.roi_aligns = nn.ModuleDict(), nn.ModuleDict()
         for layer_id, layer_params in enumerate(self.cfg):
             k, exp_size, c, use_se, use_hs, s = layer_params
             output_channel = make_divisible(c * width_mult, 8)
-            spatial_stride = 1 if skip_strides else s
-            temporal_stride = 1 if skip_strides else self.temporal_strides[layer_id]
-
+            spatial_stride = s
+            temporal_stride = self.temporal_strides[layer_id]
             use_dw_temporal = self.use_dw_temporal[layer_id] > 0
 
             layers.append(residual_block(
@@ -363,11 +361,13 @@ class MobileNetV3_S3D(nn.Module):
                 use_temporal_avg_pool, dropout_cfg,
                 use_dw_temporal, weight_norm, center_weight=center_conv_weight)
             )
-            input_channel = output_channel
 
             if self.use_st_att[layer_id] > 0:
                 att_name = 'st_att_{}'.format(layer_id + num_layers_before)
-                self.attentions[att_name] = attention_block(input_channel, **attention_cfg)
+                self.attentions[att_name] = attention_block(output_channel, **attention_cfg)
+
+            input_channel = output_channel
+            self.channels_num.append(output_channel)
 
         self.features = nn.ModuleList(layers)
 
@@ -390,34 +390,55 @@ class MobileNetV3_S3D(nn.Module):
             self.out_ids = [len(self.features) - 1]
 
     def forward(self, x, return_extra_data=False, enable_extra_modules=True):
-        if self.input_bn is not None:
-            x = self.input_bn(x)
+        y = self._norm_input(x)
 
-        y = x
         outs = []
         feature_data, att_data = dict(), dict()
-        for module_idx, module in enumerate(self.features):
-            if return_extra_data and hasattr(module, 'loss'):
-                y, feature_extra_data = module(y, return_extra_data=True)
-                feature_data[module_idx] = feature_extra_data
-            else:
-                y = module(y)
-
-            attention_module_name = 'st_att_{}'.format(module_idx)
-            if attention_module_name in self.attentions:
-                attention_module = self.attentions[attention_module_name]
-
-                if return_extra_data and hasattr(attention_module, 'loss'):
-                    y, att_extra_data = attention_module(y, return_extra_data=True)
-                    att_data[attention_module_name] = att_extra_data
-                elif enable_extra_modules:
-                    y = attention_module(y)
-                else:
-                    y += y  # simulate residual block
+        for module_idx in range(len(self.features)):
+            y = self._infer_module(
+                y, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data
+            )
 
             if module_idx in self.out_ids:
                 outs.append(y)
 
+        outs = self._out_conv(outs, return_extra_data, enable_extra_modules, att_data)
+
+        if return_extra_data:
+            return outs, dict(feature_data=feature_data, att_data=att_data)
+        else:
+            return outs
+
+    def _norm_input(self, x):
+        if self.input_bn is not None:
+            x = self.input_bn(x)
+
+        return x
+
+    def _infer_module(self, x, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data):
+        module = self.features[module_idx]
+
+        if return_extra_data and hasattr(module, 'loss'):
+            y, feature_extra_data = module(x, return_extra_data=True)
+            feature_data[module_idx] = feature_extra_data
+        else:
+            y = module(x)
+
+        attention_module_name = 'st_att_{}'.format(module_idx)
+        if attention_module_name in self.attentions:
+            attention_module = self.attentions[attention_module_name]
+
+            if return_extra_data and hasattr(attention_module, 'loss'):
+                y, att_extra_data = attention_module(y, return_extra_data=True)
+                att_data[attention_module_name] = att_extra_data
+            elif enable_extra_modules:
+                y = attention_module(y)
+            else:
+                y += y  # simulate residual block
+
+        return y
+
+    def _out_conv(self, outs, return_extra_data, enable_extra_modules, att_data):
         if self.conv is not None:
             assert len(outs) == 1
 
@@ -435,33 +456,32 @@ class MobileNetV3_S3D(nn.Module):
 
             outs = [y]
 
-        if return_extra_data:
-            return outs, dict(feature_data=feature_data, att_data=att_data)
-        else:
-            return outs
+        return outs
 
-    def loss(self, feature_data, att_data, **kwargs):
+    def loss(self, feature_data=None, att_data=None, **kwargs):
         losses = dict()
 
-        reg_losses = []
-        for module_idx, module_data in feature_data.items():
-            module = self.features[module_idx]
+        if feature_data is not None:
+            reg_losses = []
+            for module_idx, module_data in feature_data.items():
+                module = self.features[module_idx]
 
-            loss_value = module.loss(**module_data, **kwargs)
-            if loss_value is not None:
-                reg_losses.append(loss_value)
-        if len(reg_losses) > 0:
-            losses['loss/freg'] = torch.mean(torch.stack(reg_losses))
+                loss_value = module.loss(**module_data, **kwargs)
+                if loss_value is not None:
+                    reg_losses.append(loss_value)
+            if len(reg_losses) > 0:
+                losses['loss/freg'] = torch.mean(torch.stack(reg_losses))
 
-        att_losses = []
-        for module_name, module_data in att_data.items():
-            module = self.attentions[module_name]
+        if att_data is not None:
+            att_losses = []
+            for module_name, module_data in att_data.items():
+                module = self.attentions[module_name]
 
-            loss_value = module.loss(**module_data, **kwargs)
-            if loss_value is not None:
-                att_losses.append(loss_value)
-        if len(att_losses) > 0:
-            losses['loss/att'] = torch.mean(torch.stack(att_losses))
+                loss_value = module.loss(**module_data, **kwargs)
+                if loss_value is not None:
+                    att_losses.append(loss_value)
+            if len(att_losses) > 0:
+                losses['loss/att'] = torch.mean(torch.stack(att_losses))
 
         return losses
 
