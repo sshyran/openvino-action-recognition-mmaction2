@@ -126,8 +126,6 @@ data = dict(
 
 # optimizer
 optimizer = dict(
-    # type='AdamW',
-    # lr=1e-3,
     type='SGD',
     lr=1e-2,
     momentum=0.9,
@@ -135,7 +133,7 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=8,
+        max_norm=40,
         norm_type=2
     )
 )
@@ -143,7 +141,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=10,
+    epochs=0,
     open_layers=['cls_head']
 )
 
@@ -153,12 +151,12 @@ lr_config = dict(
     step=[50, 70, 90],
     gamma=0.1,
     by_epoch=True,
-    fixed='cos',
+    fixed=None,
     fixed_iters=10,
     fixed_ratio=10.0,
     warmup='cos',
     warmup_iters=10,
-    warmup_ratio=1e-2,
+    warmup_ratio=1e-3,
     warmup_by_epoch=True
 )
 total_epochs = 110
