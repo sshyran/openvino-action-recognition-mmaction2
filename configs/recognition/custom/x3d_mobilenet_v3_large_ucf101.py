@@ -27,17 +27,7 @@ model = dict(
         # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        # use_st_att=      (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
         use_dw_temporal=1,
-        attention_cfg=dict(
-            kernels=3,
-            add_temporal=False,
-            gumbel=True,
-            enable_loss=True,
-            gt_regression=True,
-            tv_loss=True,
-            reg_weight=0.1,
-        ),
         use_temporal_avg_pool=True,
         input_bn=False,
         out_conv=True,
@@ -69,23 +59,12 @@ model = dict(
         embedding=True,
         embd_size=256,
         num_centers=1,
-        st_scale=10.0,
-        reg_weight=1.0,
-        reg_threshold=0.1,
-        enable_sampling=False,
-        adaptive_sampling=False,
-        sampling_angle_std=3.14 / 2 / 5,
-        enable_class_mixing=False,
-        class_mixing_alpha=0.2,
         loss_cls=dict(
             type='AMSoftmaxLoss',
             target_loss='ce',
             scale_cfg=dict(
-                type='PolyScalarScheduler',
-                start_scale=30.0,
-                end_scale=5.0,
-                power=1.2,
-                num_epochs=41.276,
+                type='ConstantScalarScheduler',
+                scale=10.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -111,7 +90,7 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
+    self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
@@ -143,7 +122,6 @@ train_pipeline = [
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
-    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
