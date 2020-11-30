@@ -127,7 +127,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-1,
+    lr=1e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -150,7 +150,7 @@ lr_config = dict(
     policy='freezestep',
     step=[30, 50, 70],
     fixed_iters=5,
-    fixed_ratio=1.0,
+    fixed_ratio=10.0,
     by_epoch=True,
     gamma=0.1,
     warmup='linear',
