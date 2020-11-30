@@ -126,6 +126,8 @@ data = dict(
 
 # optimizer
 optimizer = dict(
+    # type='AdamW',
+    # lr=1e-3,
     type='SGD',
     lr=1e-2,
     momentum=0.9,
@@ -133,7 +135,7 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
+        max_norm=8,
         norm_type=2
     )
 )
@@ -154,7 +156,7 @@ lr_config = dict(
     fixed='cos',
     fixed_iters=10,
     fixed_ratio=10.0,
-    warmup=None,
+    warmup='cos',
     warmup_iters=10,
     warmup_ratio=1e-2,
     warmup_by_epoch=True
