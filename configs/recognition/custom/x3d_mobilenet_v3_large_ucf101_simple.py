@@ -154,9 +154,9 @@ lr_config = dict(
     fixed='cos',
     fixed_iters=10,
     fixed_ratio=10.0,
-    warmup='cos',
+    warmup=None,
     warmup_iters=10,
-    warmup_ratio=1e-1,
+    warmup_ratio=1e-2,
     warmup_by_epoch=True
 )
 total_epochs = 110

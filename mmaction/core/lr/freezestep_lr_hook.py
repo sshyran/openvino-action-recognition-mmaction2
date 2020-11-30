@@ -37,9 +37,9 @@ class FreezeLrUpdaterHook(Hook):
             self.warmup_epochs = None
 
         self.fixed_policy = fixed
+        self.fixed_iters = fixed_iters if fixed else 0
         self.fixed_start_ratio = fixed_ratio
         self.fixed_end_ratio = self.warmup_start_ratio if warmup is not None else 1.0
-        self.fixed_iters = fixed_iters if fixed else 0
         if self.by_epoch:
             self.fixed_epochs = self.fixed_iters
             self.fixed_iters = None
