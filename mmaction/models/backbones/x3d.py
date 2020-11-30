@@ -24,11 +24,11 @@ class SEModule(nn.Module):
             self.bottleneck, channels, kernel_size=1, padding=0)
         self.sigmoid = nn.Sigmoid()
 
-    def _round_width(self, width, multiplier, min_width=8, divisor=8):
+    @staticmethod
+    def _round_width(width, multiplier, min_width=8, divisor=8):
         width *= multiplier
         min_width = min_width or divisor
-        width_out = max(min_width,
-                        int(width + divisor / 2) // divisor * divisor)
+        width_out = max(min_width, int(width + divisor / 2) // divisor * divisor)
         if width_out < 0.9 * width:
             width_out += divisor
         return int(width_out)
