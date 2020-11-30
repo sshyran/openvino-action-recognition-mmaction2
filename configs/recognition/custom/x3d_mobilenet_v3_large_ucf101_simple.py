@@ -141,24 +141,25 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=10,
     open_layers=['cls_head']
 )
 
 # learning policy
 lr_config = dict(
     policy='freezestep',
-    step=[30, 50, 70],
-    fixed_iters=5,
-    fixed_ratio=10.0,
-    by_epoch=True,
+    step=[50, 70, 90],
     gamma=0.1,
-    warmup='linear',
-    warmup_iters=5,
-    warmup_by_epoch=True,
+    by_epoch=True,
+    fixed='cos',
+    fixed_iters=10,
+    fixed_ratio=10.0,
+    warmup='cos',
+    warmup_iters=10,
     warmup_ratio=1e-2,
+    warmup_by_epoch=True
 )
-total_epochs = 90
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]
