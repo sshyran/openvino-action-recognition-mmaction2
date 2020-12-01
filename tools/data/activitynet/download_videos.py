@@ -52,7 +52,9 @@ class VideoDownloader:
                    '-i', '"%s"' % tmp_filename,
                    '-ss', str(start_time),
                    '-t', str(end_time - start_time),
-                   '-c:v', 'copy', '-an',
+                   '-c:v', 'libxvid',
+                   '-q:v', '10',
+                   '-an',
                    '-threads', '1',
                    '-loglevel', 'panic',
                    '"%s"' % output_filename]
@@ -121,7 +123,6 @@ def parse_records(data_sources):
             segments = record['annotations']
             for segment_id, segment_annot in enumerate(segments):
                 segment_name = f'{video_name}_segment{segment_id}'
-                # segment_label = segment_annot['label']
                 segment_borders = segment_annot['segment']
 
                 segment_start = int(segment_borders[0])
@@ -129,7 +130,6 @@ def parse_records(data_sources):
 
                 out_records[segment_name] = {
                     'url': url,
-                    # 'label': segment_label,
                     'start': segment_start,
                     'end': segment_end,
                 }
@@ -170,7 +170,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--sources', '-s', nargs='+', type=str, required=True)
     parser.add_argument('--output_dir', '-o', type=str, required=True)
-    parser.add_argument('--extension', '-e', type=str, required=False, default='mp4')
+    parser.add_argument('--extension', '-e', type=str, required=False, default='avi')
     parser.add_argument('--num_jobs', '-n', type=int, required=False, default=24)
     parser.add_argument('--tmp_dir', '-t', type=str, required=False, default='/tmp/kinetics700')
     args = parser.parse_args()
