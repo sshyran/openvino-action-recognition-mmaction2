@@ -1,5 +1,5 @@
 # global parameters
-num_videos_per_gpu = 14
+num_videos_per_gpu = 12
 num_workers_per_gpu = 3
 train_sources = 'ucf101',
 test_sources = 'ucf101',
@@ -29,11 +29,7 @@ model = dict(
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal=1,
         use_temporal_avg_pool=True,
-        input_bn=False,
         out_conv=True,
-        out_attention=False,
-        weight_norm='none',
-        center_conv_weight=None,
         dropout_cfg=dict(
             dist='gaussian',
             p=0.1,
@@ -168,7 +164,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-3,
+    lr=1e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -182,24 +178,25 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=0,
     open_layers=['cls_head']
 )
 
 # learning policy
 lr_config = dict(
     policy='freezestep',
-    step=[30, 50],
-    fixed_iters=5,
-    fixed_ratio=10.0,
-    by_epoch=True,
+    step=[50, 70, 90],
     gamma=0.1,
-    warmup='linear',
-    warmup_iters=5,
-    warmup_by_epoch=True,
-    warmup_ratio=1e-2,
+    by_epoch=True,
+    fixed=None,
+    fixed_iters=10,
+    fixed_ratio=10.0,
+    warmup='cos',
+    warmup_iters=10,
+    warmup_ratio=1e-3,
+    warmup_by_epoch=True
 )
-total_epochs = 65
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]
