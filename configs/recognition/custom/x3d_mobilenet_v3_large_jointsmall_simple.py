@@ -1,10 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-# train_sources = 'ucf101', 'hmdb51',
-# test_sources = 'ucf101', 'hmdb51',
-train_sources = 'activitynet200',
-test_sources = 'activitynet200',
+train_sources = 'ucf101', 'hmdb51', 'activitynet200',
+test_sources = 'ucf101', 'hmdb51', 'activitynet200',
 
 root_dir = 'data'
 work_dir = None

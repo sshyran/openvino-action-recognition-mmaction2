@@ -4,13 +4,6 @@ from collections import defaultdict
 from os import makedirs, listdir
 from os.path import exists, join, isfile
 
-from tqdm import tqdm
-
-# try:
-#     from decord import VideoReader
-# except ImportError:
-#     raise ImportError('Please run "pip install decord" to install Decord first.')
-
 
 def ensure_dir_exists(dir_path):
     if not exists(dir_path):
@@ -64,22 +57,7 @@ def validate_videos(records, out_videos_dir, extension):
     all_videos = set(video_name for video_name in records.keys())
 
     valid_videos = downloaded_videos & all_videos
-
-    out_records = {}
-    for video_name in tqdm(valid_videos, desc='Validating', leave=False):
-        content = records[video_name]
-        # video_path = join(out_videos_dir, f'{video_name}.{extension}')
-        #
-        # try:
-        #     container = VideoReader(video_path, num_threads=1)
-        #     if len(container) > 0:
-        #         out_records[video_name] = content
-        #
-        #     del container
-        # except:
-        #     pass
-
-        out_records[video_name] = content
+    out_records = {video_name: records[video_name] for video_name in valid_videos}
 
     return out_records
 
