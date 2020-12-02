@@ -49,15 +49,18 @@ def parse_records(data_sources):
 
 
 def validate_videos(records, out_videos_dir, extension):
-    downloaded_videos = [join(out_videos_dir, f)
-                         for f in listdir(out_videos_dir)
-                         if isfile(join(out_videos_dir, f)) and f.endswith(extension)]
-    all_videos = [join(out_videos_dir, f'{video_name}.{extension}')
-                  for video_name in records.keys()]
+    downloaded_videos = set(
+        f.replace(f'.{extension}', '')
+        for f in listdir(out_videos_dir)
+        if isfile(join(out_videos_dir, f)) and f.endswith(extension)
+    )
+    all_videos = set(video_name for video_name in records.keys())
 
-    skipped_videos = list(set(all_videos) - set(downloaded_videos))
-    if len(skipped_videos) > 0:
-        raise RuntimeError(f'Found {len(skipped_videos)} skipped videos')
+    print(len(downloaded_videos), len(all_videos))
+
+    valid_videos = downloaded_videos & all_videos
+
+    return {video_name: records[video_name] for video_name in valid_videos}
 
 
 def build_classmap(records):
@@ -97,7 +100,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--sources', '-s', nargs='+', type=str, required=True)
     parser.add_argument('--output_dir', '-o', type=str, required=True)
-    parser.add_argument('--extension', '-e', type=str, required=False, default='mp4')
+    parser.add_argument('--extension', '-e', type=str, required=False, default='avi')
     args = parser.parse_args()
 
     ensure_dir_exists(args.output_dir)
@@ -112,17 +115,18 @@ def main():
     classmap = build_classmap(records)
     print(f'Found {len(classmap)} unique classes.')
 
-    out_classmap_path = join(args.output_dir, 'classmap.json')
+    out_classmap_path = join(args.output_dir, '..', 'classmap.json')
     write_classmap(classmap, out_classmap_path)
     print(f'Dumped classmap to: {out_classmap_path}')
 
-    validate_videos(records, args.output_dir, args.extension)
+    records = validate_videos(records, args.output_dir, args.extension)
+    print(f'Validated {len(records)} videos.')
 
     annot = convert_labels(records, classmap)
     split_annot = split_by_type(annot)
 
     for data_type, records in split_annot.items():
-        out_annot_path = join(args.output_dir, f'{data_type}.txt')
+        out_annot_path = join(args.output_dir, '..', f'{data_type}.txt')
         write_annot(records, out_annot_path)
         print(f'Dumped annot to: {out_annot_path}')
 
