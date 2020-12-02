@@ -88,7 +88,7 @@ train_pipeline = [
          max_wh_scale_gap=1),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    # dict(type='BlockDropout', scale=0.2, prob=0.1),
+    dict(type='BlockDropout', scale=0.2, prob=0.1),
     # dict(type='PhotometricDistortion',
     #      brightness_range=(65, 190),
     #      contrast_range=(0.6, 1.4),
