@@ -1,8 +1,10 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'ucf101', 'hmdb51',
-test_sources = 'ucf101', 'hmdb51',
+# train_sources = 'ucf101', 'hmdb51',
+# test_sources = 'ucf101', 'hmdb51',
+train_sources = 'activitynet200',
+test_sources = 'activitynet200',
 
 root_dir = 'data'
 work_dir = None
@@ -30,12 +32,12 @@ model = dict(
         use_dw_temporal=1,
         use_temporal_avg_pool=True,
         out_conv=True,
-        dropout_cfg=dict(
-            dist='gaussian',
-            p=0.1,
-            mu=0.1,
-            sigma=0.03,
-        ),
+        # dropout_cfg=dict(
+        #     dist='gaussian',
+        #     p=0.1,
+        #     mu=0.1,
+        #     sigma=0.03,
+        # ),
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -88,12 +90,12 @@ train_pipeline = [
          max_wh_scale_gap=1),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='BlockDropout', scale=0.2, prob=0.1),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
+    # dict(type='BlockDropout', scale=0.2, prob=0.1),
+    # dict(type='PhotometricDistortion',
+    #      brightness_range=(65, 190),
+    #      contrast_range=(0.6, 1.4),
+    #      saturation_range=(0.7, 1.3),
+    #      hue_delta=18),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),

@@ -4,6 +4,13 @@ from collections import defaultdict
 from os import makedirs, listdir
 from os.path import exists, join, isfile
 
+from tqdm import tqdm
+
+# try:
+#     from decord import VideoReader
+# except ImportError:
+#     raise ImportError('Please run "pip install decord" to install Decord first.')
+
 
 def ensure_dir_exists(dir_path):
     if not exists(dir_path):
@@ -56,11 +63,25 @@ def validate_videos(records, out_videos_dir, extension):
     )
     all_videos = set(video_name for video_name in records.keys())
 
-    print(len(downloaded_videos), len(all_videos))
-
     valid_videos = downloaded_videos & all_videos
 
-    return {video_name: records[video_name] for video_name in valid_videos}
+    out_records = {}
+    for video_name in tqdm(valid_videos, desc='Validating', leave=False):
+        content = records[video_name]
+        # video_path = join(out_videos_dir, f'{video_name}.{extension}')
+        #
+        # try:
+        #     container = VideoReader(video_path, num_threads=1)
+        #     if len(container) > 0:
+        #         out_records[video_name] = content
+        #
+        #     del container
+        # except:
+        #     pass
+
+        out_records[video_name] = content
+
+    return out_records
 
 
 def build_classmap(records):
@@ -68,11 +89,11 @@ def build_classmap(records):
     return {class_name: i for i, class_name in enumerate(sorted(labels))}
 
 
-def convert_labels(records, classmap):
+def convert_annot(records, classmap, extension):
     out_records = dict()
     for video_name, content in records.items():
         label_id = classmap[content['label']]
-        out_records[video_name] = label_id, content['data_type']
+        out_records[f'{video_name}.{extension}'] = label_id, content['data_type']
 
     return out_records
 
@@ -122,7 +143,7 @@ def main():
     records = validate_videos(records, args.output_dir, args.extension)
     print(f'Validated {len(records)} videos.')
 
-    annot = convert_labels(records, classmap)
+    annot = convert_annot(records, classmap, args.extension)
     split_annot = split_by_type(annot)
 
     for data_type, records in split_annot.items():
