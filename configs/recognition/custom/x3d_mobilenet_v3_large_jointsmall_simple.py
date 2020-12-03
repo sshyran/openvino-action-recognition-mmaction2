@@ -100,8 +100,8 @@ val_pipeline = [
     dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs'])
+    dict(type='Collect', keys=['imgs', 'dataset_id'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'dataset_id'])
 ]
 data = dict(
     videos_per_gpu=num_videos_per_gpu,
