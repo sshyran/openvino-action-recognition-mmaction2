@@ -289,10 +289,6 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         if self.multi_head:
             assert dataset_id is not None
 
-            num_clips = imgs.size(0) // dataset_id.size(0)
-            if num_clips > 1:
-                dataset_id = dataset_id.view(-1, 1).repeat(1, num_clips).view(-1)
-
             head_outs = []
             for cls_head in self.cls_head:
                 head_y = cls_head(y, *head_args)
