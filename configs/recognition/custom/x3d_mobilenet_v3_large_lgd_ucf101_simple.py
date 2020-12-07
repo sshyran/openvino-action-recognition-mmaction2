@@ -17,7 +17,7 @@ input_img_size = 224
 model = dict(
     type='Recognizer3D',
     backbone=dict(
-        type='MobileNetV3_S3D',
+        type='MobileNetV3_LGD',
         num_input_layers=3,
         mode='large',
         pretrained=None,
@@ -29,6 +29,7 @@ model = dict(
         temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1),
+        mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
     ),
@@ -154,16 +155,19 @@ params_config = dict(
 
 # learning policy
 lr_config = dict(
-    policy='customcos',
-    periods=[5, 10, 20, 30, 40],
-    min_lr_ratio=1e-3,
+    policy='freezestep',
+    step=[50, 70, 90],
+    gamma=0.1,
     by_epoch=True,
+    fixed=None,
+    fixed_iters=10,
+    fixed_ratio=10.0,
     warmup='cos',
-    warmup_iters=5,
+    warmup_iters=10,
     warmup_ratio=1e-3,
     warmup_by_epoch=True
 )
-total_epochs = 90
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]

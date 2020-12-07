@@ -1,9 +1,10 @@
 import math
+from abc import ABCMeta, abstractmethod
 
-from mmcv.runner.hooks import HOOKS, Hook
+from mmcv.runner.hooks import Hook
 
 
-class FreezeLrUpdaterHook(Hook):
+class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
     schedulers = ['constant', 'linear', 'cos']
 
     def __init__(self,
@@ -74,8 +75,9 @@ class FreezeLrUpdaterHook(Hook):
 
         return [_lr * k for _lr in regular_lr]
 
+    @abstractmethod
     def get_lr(self, runner, base_lr):
-        raise NotImplementedError
+        pass
 
     def get_regular_lr(self, runner):
         if isinstance(runner.optimizer, dict):
@@ -166,35 +168,3 @@ class FreezeLrUpdaterHook(Hook):
             else:
                 fixed_lr = self.get_fixed_lr(cur_iter)
                 self._set_lr(runner, fixed_lr)
-
-
-@HOOKS.register_module()
-class FreezestepLrUpdaterHook(FreezeLrUpdaterHook):
-    def __init__(self, step, gamma=0.1, **kwargs):
-        super(FreezestepLrUpdaterHook, self).__init__(**kwargs)
-
-        assert isinstance(step, (list, int))
-        if isinstance(step, list):
-            for s in step:
-                assert isinstance(s, int) and s > 0
-        elif isinstance(step, int):
-            assert step > 0
-        else:
-            raise TypeError('"step" must be a list or integer')
-
-        self.step = step
-        self.gamma = gamma
-
-    def get_lr(self, runner, base_lr):
-        progress = runner.epoch if self.by_epoch else runner.iter
-
-        if isinstance(self.step, int):
-            return base_lr * (self.gamma**(progress // self.step))
-
-        exp = len(self.step)
-        for i, s in enumerate(self.step):
-            if progress < s:
-                exp = i
-                break
-
-        return base_lr * self.gamma**exp
