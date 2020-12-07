@@ -28,7 +28,7 @@ model = dict(
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
         temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        use_dw_temporal= (1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1),
+        use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
     ),
@@ -157,13 +157,11 @@ lr_config = dict(
     policy='customcos',
     periods=[5, 10, 20, 30, 40],
     min_lr_ratio=1e-3,
-    by_epoch=True,
     warmup='cos',
-    warmup_iters=5,
+    warmup_epochs=5,
     warmup_ratio=1e-3,
-    warmup_by_epoch=True
 )
-total_epochs = 90
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]

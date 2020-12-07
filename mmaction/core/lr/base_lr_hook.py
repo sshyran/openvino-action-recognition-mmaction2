@@ -8,47 +8,34 @@ class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
     schedulers = ['constant', 'linear', 'cos']
 
     def __init__(self,
-                 by_epoch=True,
                  fixed=None,
-                 fixed_iters=0,
+                 fixed_epochs=0,
                  fixed_ratio=1.0,
                  warmup=None,
-                 warmup_iters=0,
-                 warmup_ratio=0.1,
-                 warmup_by_epoch=False):
-        self.by_epoch = by_epoch
-
+                 warmup_epochs=0,
+                 warmup_ratio=0.1):
         if fixed is not None:
             assert fixed in self.schedulers
-            assert fixed_iters > 0
+            assert fixed_epochs > 0
 
         if warmup is not None:
             assert warmup in self.schedulers
-            assert warmup_iters > 0
+            assert warmup_epochs > 0
             assert 0 < warmup_ratio <= 1.0
 
         self.warmup_policy = warmup
-        self.warmup_iters = warmup_iters if warmup else 0
+        self.warmup_epochs = warmup_epochs if warmup else 0
         self.warmup_start_ratio = warmup_ratio
-        self.warmup_by_epoch = warmup_by_epoch
-        if self.warmup_by_epoch:
-            self.warmup_epochs = self.warmup_iters
-            self.warmup_iters = None
-        else:
-            self.warmup_epochs = None
 
         self.fixed_policy = fixed
-        self.fixed_iters = fixed_iters if fixed else 0
+        self.fixed_epochs = fixed_epochs if fixed else 0
         self.fixed_start_ratio = fixed_ratio
         self.fixed_end_ratio = self.warmup_start_ratio if warmup is not None else 1.0
-        if self.by_epoch:
-            self.fixed_epochs = self.fixed_iters
-            self.fixed_iters = None
-        else:
-            self.fixed_epochs = None
 
-        self.base_lr = []  # initial lr for all param groups
-        self.regular_lr = []  # expected lr if no warming up is performed
+        self.base_lr = []
+        self.epoch_len = None
+        self.fixed_iters = None
+        self.warmup_iters = None
 
     @staticmethod
     def _set_lr(runner, lr_groups):
@@ -93,21 +80,21 @@ class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
         else:
             return [self.get_lr(runner, _base_lr) for _base_lr in self.base_lr]
 
-    def get_fixed_lr(self, cur_iters):
+    def get_fixed_lr(self, cur_iters, regular_lr):
         return self._get_lr(
             self.fixed_policy,
             cur_iters,
-            self.regular_lr,
+            regular_lr,
             self.fixed_iters,
             self.fixed_start_ratio,
             self.fixed_end_ratio
         )
 
-    def get_warmup_lr(self, cur_iters):
+    def get_warmup_lr(self, cur_iters, regular_lr):
         return self._get_lr(
             self.warmup_policy,
             cur_iters,
-            self.regular_lr,
+            regular_lr,
             self.warmup_iters,
             self.warmup_start_ratio,
             1.0
@@ -133,38 +120,19 @@ class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
             ]
 
     def before_train_epoch(self, runner):
-        if not self.by_epoch:
-            return
-
-        epoch_len = len(runner.data_loader)
-        self.fixed_iters = self.fixed_epochs * epoch_len
-
-        if self.warmup_by_epoch:
-            self.warmup_iters = self.warmup_epochs * epoch_len
-
-        self.regular_lr = self.get_regular_lr(runner)
-        self._set_lr(runner, self.regular_lr)
+        self.epoch_len = len(runner.data_loader)
+        self.fixed_iters = self.fixed_epochs * self.epoch_len
+        self.warmup_iters = self.warmup_epochs * self.epoch_len
 
     def before_train_iter(self, runner):
         cur_iter = runner.iter
-        if not self.by_epoch:
-            self.regular_lr = self.get_regular_lr(runner)
-            if cur_iter >= self.warmup_iters + self.fixed_iters:
-                self._set_lr(runner, self.regular_lr)
-            elif cur_iter >= self.fixed_iters:
-                warmup_lr = self.get_warmup_lr(cur_iter - self.fixed_iters)
-                self._set_lr(runner, warmup_lr)
-            else:
-                fixed_lr = self.get_fixed_lr(cur_iter)
-                self._set_lr(runner, fixed_lr)
-        elif self.by_epoch:
-            if cur_iter > self.warmup_iters + self.fixed_iters:
-                return
-            elif cur_iter == self.warmup_iters + self.fixed_iters:
-                self._set_lr(runner, self.regular_lr)
-            elif cur_iter >= self.fixed_iters:
-                warmup_lr = self.get_warmup_lr(cur_iter - self.fixed_iters)
-                self._set_lr(runner, warmup_lr)
-            else:
-                fixed_lr = self.get_fixed_lr(cur_iter)
-                self._set_lr(runner, fixed_lr)
+        regular_lr = self.get_regular_lr(runner)
+
+        if cur_iter >= self.warmup_iters + self.fixed_iters:
+            self._set_lr(runner, regular_lr)
+        elif cur_iter >= self.fixed_iters:
+            warmup_lr = self.get_warmup_lr(cur_iter - self.fixed_iters, regular_lr)
+            self._set_lr(runner, warmup_lr)
+        else:
+            fixed_lr = self.get_fixed_lr(cur_iter, regular_lr)
+            self._set_lr(runner, fixed_lr)
