@@ -28,7 +28,7 @@ model = dict(
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
         temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
-        use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        use_dw_temporal= (1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
     ),
