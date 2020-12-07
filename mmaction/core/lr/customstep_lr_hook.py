@@ -21,7 +21,7 @@ class CustomstepLrUpdaterHook(BaseLrUpdaterHook):
         self.gamma = gamma
 
     def get_lr(self, runner, base_lr):
-        progress = runner.epoch if self.by_epoch else runner.iter
+        progress = runner.epoch
 
         if isinstance(self.step, int):
             return base_lr * (self.gamma**(progress // self.step))
