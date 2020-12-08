@@ -47,6 +47,19 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             for idx, glob_channels in zip(self.glob_idx, self.glob_channels_num[:-1])
         })
 
+        self._reset_weights()
+
+    def _reset_weights(self):
+        for module in self.upsample_modules.values():
+            last_stage = module[len(module) - 1]
+            if not isinstance(last_stage, nn.BatchNorm3d):
+                continue
+
+            if hasattr(last_stage, 'weight') and last_stage.weight is not None:
+                last_stage.weight.data.zero_()
+            if hasattr(last_stage, 'bias') and last_stage.bias is not None:
+                last_stage.bias.data.zero_()
+
     @staticmethod
     def _build_upsample_module(in_planes, out_planes, factor=3, norm='none'):
         hidden_dim = int(factor * in_planes)
