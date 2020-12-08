@@ -84,7 +84,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         local_y = y
         glob_y = None
 
-        outs = []
+        local_outs = []
         feature_data, att_data = dict(), dict()
         for module_idx in range(len(self.features)):
             local_y = self._infer_module(
@@ -108,11 +108,11 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                     glob_y = pooled_local_y
 
             if module_idx in self.out_ids:
-                outs.append(local_y)
+                local_outs.append(local_y)
 
-        outs = self._out_conv(outs, return_extra_data, enable_extra_modules, att_data)
+        local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:
-            return outs, dict(feature_data=feature_data, att_data=att_data)
+            return local_outs, dict(feature_data=feature_data, att_data=att_data)
         else:
-            return outs
+            return local_outs
