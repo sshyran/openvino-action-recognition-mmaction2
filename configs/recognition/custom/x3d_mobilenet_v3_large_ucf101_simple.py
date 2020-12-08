@@ -155,13 +155,15 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[5, 10, 20, 30, 40],
+    periods=[5, 10, 20, 30],
+    restart_weights=[1.0, 0.9, 0.5, 0.1],
+    max_lr_fraction=0.5,
     min_lr_ratio=1e-3,
     warmup='cos',
     warmup_epochs=5,
     warmup_ratio=1e-3,
 )
-total_epochs = 110
+total_epochs = 70
 
 # workflow
 workflow = [('train', 1)]

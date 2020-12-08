@@ -7,7 +7,7 @@ from .base_lr_hook import BaseLrUpdaterHook
 
 @HOOKS.register_module()
 class CustomcosLrUpdaterHook(BaseLrUpdaterHook):
-    def __init__(self, periods, restart_weights=None, min_lr_ratio=1e-3, **kwargs):
+    def __init__(self, periods, restart_weights=None, min_lr_ratio=1e-3, max_lr_fraction=0.0, **kwargs):
         super(CustomcosLrUpdaterHook, self).__init__(**kwargs)
 
         if restart_weights is None:
@@ -17,6 +17,8 @@ class CustomcosLrUpdaterHook(BaseLrUpdaterHook):
         self.epoch_periods = periods
         self.restart_weights = restart_weights
         self.min_lr_ratio = min_lr_ratio
+        self.max_lr_fraction = max_lr_fraction
+        assert 0.0 <= self.max_lr_fraction < 1.0
 
         self.iter_periods = None
         self.iter_cumulative_periods = None
@@ -48,9 +50,9 @@ class CustomcosLrUpdaterHook(BaseLrUpdaterHook):
         nearest_restart = 0 if idx == 0 else self.iter_cumulative_periods[idx - 1]
         current_periods = self.iter_periods[idx]
 
-        alpha = min((progress - nearest_restart) / current_periods, 1)
+        alpha = min(float(progress - nearest_restart) / float(current_periods), 1.0)
         target_lr = base_lr * self.min_lr_ratio
-        out_lr = self._annealing_cos(base_lr, target_lr, alpha, current_weight)
+        out_lr = self._annealing_cos(base_lr, target_lr, alpha, current_weight, self.max_lr_fraction)
 
         return out_lr
 
@@ -64,6 +66,13 @@ class CustomcosLrUpdaterHook(BaseLrUpdaterHook):
                          f'cumulative_periods {cumulative_periods}')
 
     @staticmethod
-    def _annealing_cos(start, end, factor, weight=1.0):
-        cos_out = math.cos(math.pi * factor) + 1.0
-        return end + 0.5 * weight * (start - end) * cos_out
+    def _annealing_cos(start, end, progress, weight=1.0, max_fraction=0.0):
+        if progress < max_fraction:
+            return start
+
+        progress = (progress - max_fraction) / (1.0 - max_fraction)
+
+        scale = 0.5 * (math.cos(math.pi * progress) + 1.0)
+        out_value = end + (weight * start - end) * scale
+
+        return out_value
