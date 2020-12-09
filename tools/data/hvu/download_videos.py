@@ -1,10 +1,10 @@
-import json
 import subprocess
 import uuid
 import glob
 from os import makedirs, listdir, remove, popen
 from os.path import exists, join, isfile, basename, getsize
 from argparse import ArgumentParser
+from collections import defaultdict
 from shutil import rmtree
 
 from joblib import delayed, Parallel
@@ -192,27 +192,28 @@ def print_data_sources_stat(data_sources):
 
 
 def parse_records(data_sources):
+    num_records = defaultdict(int)
     out_records = dict()
     for data_source in data_sources:
         with open(data_source) as input_stream:
-            data = json.load(input_stream)
+            for line_id, line in enumerate(input_stream):
+                if line_id == 0:
+                    continue
 
-        database = data['database']
-        for record in database.values():
-            if record['subset'] not in ['training', 'validation']:
-                continue
+                line_elements = line.strip().split(',')
+                if len(line_elements) != 4:
+                    continue
 
-            url = record['url']
-            video_name = url.split('?v=')[-1]
+                _, video_name, start, end = line_elements
 
-            segments = record['annotations']
-            for segment_id, segment_annot in enumerate(segments):
+                url = f'https://www.youtube.com/watch?v={video_name}'
+                segment_start = float(start)
+                segment_end = float(end)
+
+                segment_id = num_records[video_name]
                 segment_name = f'{video_name}_segment{segment_id}'
-                segment_borders = segment_annot['segment']
 
-                segment_start = int(segment_borders[0])
-                segment_end = int(segment_borders[1])
-
+                num_records[video_name] += 1
                 out_records[segment_name] = {
                     'url': url,
                     'start': segment_start,
