@@ -209,15 +209,13 @@ params_config = dict(
 
 # learning policy
 lr_config = dict(
-    policy='freezestep',
+    policy='customstep',
     step=[30, 50],
-    fixed_iters=5,
+    fixed_epochs=5,
     fixed_ratio=1.0,
-    by_epoch=True,
     gamma=0.1,
     warmup='linear',
-    warmup_iters=5,
-    warmup_by_epoch=True,
+    warmup_epochs=5,
     warmup_ratio=1e-2,
 )
 total_epochs = 65

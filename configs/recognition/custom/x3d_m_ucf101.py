@@ -183,18 +183,14 @@ params_config = dict(
 
 # learning policy
 lr_config = dict(
-    policy='freezestep',
-    step=[30, 50],
-    fixed_iters=5,
-    fixed_ratio=10.0,
-    by_epoch=True,
+    policy='customstep',
+    step=[50, 70, 90],
     gamma=0.1,
-    warmup='linear',
-    warmup_iters=5,
-    warmup_by_epoch=True,
-    warmup_ratio=1e-2,
+    warmup='cos',
+    warmup_epochs=10,
+    warmup_ratio=1e-3,
 )
-total_epochs = 65
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]
