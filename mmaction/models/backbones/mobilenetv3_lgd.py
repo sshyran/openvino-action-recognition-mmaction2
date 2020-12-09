@@ -34,7 +34,7 @@ class UpsampleBlock(nn.Module):
         ]
         self.conv = nn.Sequential(*layers)
 
-        self._reset_weights()
+        # self._reset_weights()
 
     def forward(self, x):
         return self.conv(x)

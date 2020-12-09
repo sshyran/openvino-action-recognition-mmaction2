@@ -30,6 +30,7 @@ model = dict(
         temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        channel_factor=2,
         use_temporal_avg_pool=True,
         out_conv=True,
     ),
