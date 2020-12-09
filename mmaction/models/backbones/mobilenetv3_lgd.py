@@ -71,7 +71,7 @@ class GlobBlock(nn.Module):
 
 @BACKBONES.register_module()
 class MobileNetV3_LGD(MobileNetV3_S3D):
-    def __init__(self, mix_paths, **kwargs):
+    def __init__(self, mix_paths, channel_factor=3, **kwargs):
         super(MobileNetV3_LGD, self).__init__(**kwargs)
 
         assert len(mix_paths) == len(self.cfg)
@@ -85,11 +85,13 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         self.glob_idx = mix_idx[:-1]
 
         self.glob_channels_num = [self.channels_num[idx] for idx in self.local_to_glob_idx]
+        self.channel_factor = channel_factor
 
         self.upsample_modules = nn.ModuleDict({
             f'upsample_{idx}': UpsampleBlock(
                 glob_channels,
                 self.channels_num[idx],
+                factor=self.channel_factor,
                 norm=self.weight_norm
             )
             for idx, glob_channels in zip(self.glob_to_local_idx, self.glob_channels_num)
@@ -98,6 +100,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             f'pooling_{idx}': PoolingBlock(
                 self.channels_num[idx],
                 self.channels_num[idx],
+                factor=self.channel_factor,
                 norm=self.weight_norm
             )
             for idx in self.local_to_glob_idx
@@ -106,6 +109,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             f'glob_{idx}': GlobBlock(
                 glob_channels,
                 self.channels_num[idx],
+                factor=self.channel_factor,
                 norm=self.weight_norm
             )
             for idx, glob_channels in zip(self.glob_idx, self.glob_channels_num[:-1])
