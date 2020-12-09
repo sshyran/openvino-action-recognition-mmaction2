@@ -6,7 +6,7 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from ...core.utils import load_checkpoint, inflate_weights
 from ...core.ops import (Dropout, Conv3d, HSigmoid, HSwish, conv_kxkxk_bn, conv_1xkxk_bn,
-                         conv_kx1x1_bn, conv_1x1x1_bn, gumbel_sigmoid)
+                         conv_kx1x1_bn, conv_1x1x1_bn, gumbel_sigmoid, SimilarityGuidedSampling)
 from ...utils import get_root_logger
 from ..registry import BACKBONES
 from ..losses import TotalVarianceLoss
@@ -300,7 +300,8 @@ class MobileNetV3_S3D(nn.Module):
                  out_ids=None,
                  dropout_cfg=None,
                  weight_norm='none',
-                 center_conv_weight=None):
+                 center_conv_weight=None,
+                 sgs_cfg=None):
         super(MobileNetV3_S3D, self).__init__()
 
         # setting of inverted residual blocks
@@ -371,6 +372,25 @@ class MobileNetV3_S3D(nn.Module):
 
         self.features = nn.ModuleList(layers)
 
+        if sgs_cfg is not None:
+            assert len(sgs_cfg.idx) > 0
+            assert len(sgs_cfg.idx) == len(sgs_cfg.bins)
+
+            self.sgs_modules = nn.ModuleDict()
+            self.sgs_idx = []
+            for layer_id, num_bins in zip(sgs_cfg.idx, sgs_cfg.bins):
+                sgs_name = 'sgs_{}'.format(layer_id + num_layers_before)
+                self.sgs_modules[sgs_name] = SimilarityGuidedSampling(
+                    self.channels_num[layer_id + num_layers_before],
+                    num_bins,
+                    internal_factor=sgs_cfg.internal_factor,
+                    embd_size=sgs_cfg.embd_size,
+                    norm=weight_norm
+                )
+                self.sgs_idx.append(layer_id + num_layers_before)
+        else:
+            self.sgs_modules = None
+
         # building last several layers
         if out_conv:
             out_channels = make_divisible(exp_size * width_mult, 8)
@@ -398,6 +418,10 @@ class MobileNetV3_S3D(nn.Module):
             y = self._infer_module(
                 y, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data
             )
+
+            if self.sgs_modules is not None and module_idx in self.sgs_idx:
+                sgs_module = self.sgs_modules['sgs_{}'.format(module_idx)]
+                y = sgs_module(y)
 
             if module_idx in self.out_ids:
                 outs.append(y)

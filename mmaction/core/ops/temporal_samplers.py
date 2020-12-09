@@ -21,21 +21,22 @@ class SimilarityGuidedSampling(nn.Module):
         self.num_bins = num_bins
         self.embd_size = embd_size
 
-        centers = np.array([2.0 * i + 1 for i in range(self.num_bins)])
+        centers = np.array([2.0 * i + 1 for i in range(self.num_bins)], dtype=np.float32)
         self.register_buffer('centers', torch.from_numpy(centers))
 
     def forward(self, x):
-        embds = self.encoder(x).squeeze()
+        embds = self.encoder(x).squeeze(4).squeeze(3)
         norms = torch.sum(embds ** 2, dim=1)
 
         with torch.no_grad():
-            gamma = 0.5 * (torch.max(norms) - torch.min(norms)) / float(self.num_bins)
-            centers = self.centers * gamma
+            range_size = torch.max(norms, dim=1)[0] - torch.min(norms, dim=1)[0]
+            gamma = 0.5 * range_size / float(self.num_bins)
+            centers = gamma.view(-1, 1, 1) * self.centers.view(1, 1, -1)
 
-        diff = norms.unsqueeze(2) - centers.view(1, 1, -1)
+        diff = norms.unsqueeze(2) - centers
         coeff = torch.clamp_min(1.0 - torch.abs(diff) / gamma, 0.0)
 
-        scaled_features = x.unsqueeze(3) * coeff.unsqueeze(1)
-        out_features = torch.sum(scaled_features, dim=3)
+        scaled_features = x.unsqueeze(3) * coeff.unsqueeze(1).unsqueeze(4).unsqueeze(5)
+        out_features = torch.sum(scaled_features, dim=2)
 
         return out_features
