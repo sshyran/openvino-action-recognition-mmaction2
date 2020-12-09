@@ -34,7 +34,7 @@ class SimilarityGuidedSampling(nn.Module):
             centers = gamma.view(-1, 1, 1) * self.centers.view(1, 1, -1)
 
         diff = norms.unsqueeze(2) - centers
-        coeff = torch.clamp_min(1.0 - torch.abs(diff) / gamma, 0.0)
+        coeff = torch.clamp_min(1.0 - torch.abs(diff) / gamma.view(-1, 1, 1), 0.0)
 
         scaled_features = x.unsqueeze(3) * coeff.unsqueeze(1).unsqueeze(4).unsqueeze(5)
         out_features = torch.sum(scaled_features, dim=2)
