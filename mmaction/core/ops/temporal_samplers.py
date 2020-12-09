@@ -6,7 +6,7 @@ from ...core.ops import HSwish, conv_1x1x1_bn
 
 
 class SimilarityGuidedSampling(nn.Module):
-    def __init__(self, in_planes, num_bins, internal_factor=0.5, embd_size=8, norm='none'):
+    def __init__(self, in_planes, num_bins, internal_factor=2.0, embd_size=8, norm='none'):
         super(SimilarityGuidedSampling, self).__init__()
 
         hidden_dim = int(internal_factor * in_planes)
