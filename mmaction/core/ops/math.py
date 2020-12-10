@@ -17,4 +17,4 @@ def normalize(x, dim, p=2, eps=1e-12):
     if torch.onnx.is_in_onnx_export():
         return OnnxLpNormalization.apply(x, dim, p, eps)
     else:
-        return F.normalize(x, dim=dim)
+        return F.normalize(x, dim=dim, p=p, eps=eps)
