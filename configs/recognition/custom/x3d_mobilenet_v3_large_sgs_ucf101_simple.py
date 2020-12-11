@@ -27,15 +27,15 @@ model = dict(
         # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
         temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        temporal_kernels=(5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
+        temporal_kernels=(1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
         sgs_cfg=dict(
-            idx=[3],
+            idx=[2],
             bins=[4],
-            internal_factor=2.0,
-            embd_size=8
+            internal_factor=3.0,
+            embd_size=16
         )
     ),
     reducer=dict(
