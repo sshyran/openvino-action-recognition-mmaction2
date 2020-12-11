@@ -5,13 +5,16 @@ from ...core.ops import HSwish, conv_1x1x1_bn, normalize
 
 
 class SimilarityGuidedSampling(nn.Module):
-    def __init__(self, in_planes, num_bins, internal_factor=2.0, embd_size=32, scale=5.0, norm='none'):
+    def __init__(self, in_planes, num_bins, internal_factor=2.0, embd_size=32,
+                 scale=5.0, pos_score=0.5, norm='none'):
         super(SimilarityGuidedSampling, self).__init__()
 
         self.num_bins = num_bins
         assert self.num_bins >= 2
-        self.scale = scale
+        self.scale = float(scale)
         assert self.scale > 0.0
+        self.pos_score = float(pos_score)
+        assert self.pos_score >= 0.0
 
         hidden_dim = int(internal_factor * in_planes)
         layers = [
@@ -44,8 +47,10 @@ class SimilarityGuidedSampling(nn.Module):
             centers_sum = torch.sum(norm_embd.unsqueeze(3) * group_mask.unsqueeze(1), dim=2, keepdim=True)
             norm_centers = normalize(centers_sum / group_sizes.unsqueeze(1), dim=1)
 
+            pos_scores = self.pos_score * group_mask
+
         similarities = torch.sum(norm_embd.unsqueeze(3) * norm_centers, dim=1)
-        weights = torch.softmax(self.scale * similarities, dim=2)
+        weights = torch.softmax(self.scale * (similarities + pos_scores), dim=2)
 
         with torch.no_grad():
             sum_weights = torch.sum(weights, dim=1, keepdim=True)
