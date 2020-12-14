@@ -69,8 +69,9 @@ class SimilarityGuidedSampling(nn.Module):
 
     def loss(self, similarities, groups, centers, **kwargs):
         ce_loss = self._ce_loss(similarities, groups, self.ce_scale, self.num_bins)
-        center_push_loss = self._center_push_loss(centers, self.valid_mask, self.center_threshold)
-        return (ce_loss + center_push_loss) / 2.0
+        return ce_loss
+        # center_push_loss = self._center_push_loss(centers, self.valid_mask, self.center_threshold)
+        # return (ce_loss + center_push_loss) / 2.0
 
     @staticmethod
     def _ce_loss(similarities, groups, scale, num_classes):

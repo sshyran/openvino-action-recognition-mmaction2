@@ -140,7 +140,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=5e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
