@@ -10,6 +10,7 @@ from .losses import (CrossEntropy, NormalizedCrossEntropy, build_classification_
                      MaxEntropyLoss)
 from .domain_generalization import rsc, RSC
 from .temporal_samplers import SimilarityGuidedSampling
+from .pooling import AdaptivePool3D
 
 __all__ = ['Conv2d', 'Conv3d',
            'conv_kxkxk_bn', 'conv_1xkxk_bn', 'conv_kx1x1_bn', 'conv_1x1x1_bn',
@@ -21,5 +22,6 @@ __all__ = ['Conv2d', 'Conv3d',
            'CrossEntropy', 'NormalizedCrossEntropy', 'build_classification_loss',
            'MaxEntropyLoss', 'entropy', 'focal_loss',
            'rsc', 'RSC',
-           'SimilarityGuidedSampling'
+           'SimilarityGuidedSampling',
+           'AdaptivePool3D',
            ]

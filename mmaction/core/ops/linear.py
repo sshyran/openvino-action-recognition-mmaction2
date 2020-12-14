@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
-from ...core.ops.math import normalize
+from .math import normalize
 
 
 def entropy(p, dim=-1, keepdim=False):

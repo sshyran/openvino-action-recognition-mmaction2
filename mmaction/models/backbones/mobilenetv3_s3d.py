@@ -121,7 +121,7 @@ class ResidualAttention(nn.Module):
             elif isinstance(m, nn.BatchNorm3d):
                 constant_init(m, 1.0, 0.0)
 
-    def loss(self, attention_logits, attention_scores, attention_mask=None):
+    def loss(self, attention_logits, attention_scores, attention_mask=None, **kwargs):
         if not self.enable_loss:
             return None
 
@@ -413,15 +413,18 @@ class MobileNetV3_S3D(nn.Module):
         y = self._norm_input(x)
 
         outs = []
-        feature_data, att_data = dict(), dict()
+        feature_data, att_data, sgs_data = dict(), dict(), dict()
         for module_idx in range(len(self.features)):
             y = self._infer_module(
                 y, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data
             )
 
             if self.sgs_modules is not None and module_idx in self.sgs_idx:
-                sgs_module = self.sgs_modules['sgs_{}'.format(module_idx)]
-                y = sgs_module(y)
+                sgs_module_name = 'sgs_{}'.format(module_idx)
+                sgs_module = self.sgs_modules[sgs_module_name]
+
+                y, sgs_extra_data = sgs_module(y, return_extra_data=True)
+                sgs_data[sgs_module_name] = sgs_extra_data
 
             if module_idx in self.out_ids:
                 outs.append(y)
@@ -429,7 +432,7 @@ class MobileNetV3_S3D(nn.Module):
         outs = self._out_conv(outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:
-            return outs, dict(feature_data=feature_data, att_data=att_data)
+            return outs, dict(feature_data=feature_data, att_data=att_data, sgs_data=sgs_data)
         else:
             return outs
 
@@ -482,32 +485,30 @@ class MobileNetV3_S3D(nn.Module):
 
         return outs
 
-    def loss(self, feature_data=None, att_data=None, **kwargs):
+    def loss(self, feature_data=None, att_data=None, sgs_data=None, **kwargs):
         losses = dict()
-
-        if feature_data is not None:
-            reg_losses = []
-            for module_idx, module_data in feature_data.items():
-                module = self.features[module_idx]
-
-                loss_value = module.loss(**module_data, **kwargs)
-                if loss_value is not None:
-                    reg_losses.append(loss_value)
-            if len(reg_losses) > 0:
-                losses['loss/freg'] = torch.mean(torch.stack(reg_losses))
-
-        if att_data is not None:
-            att_losses = []
-            for module_name, module_data in att_data.items():
-                module = self.attentions[module_name]
-
-                loss_value = module.loss(**module_data, **kwargs)
-                if loss_value is not None:
-                    att_losses.append(loss_value)
-            if len(att_losses) > 0:
-                losses['loss/att'] = torch.mean(torch.stack(att_losses))
-
+        losses.update(self._process_loss(feature_data, self.features, 'loss/freg', **kwargs))
+        losses.update(self._process_loss(att_data, self.attentions, 'loss/att', **kwargs))
+        losses.update(self._process_loss(sgs_data, self.sgs_modules, 'loss/sgs', **kwargs))
         return losses
+
+    @staticmethod
+    def _process_loss(data, modules, name, **kwargs):
+        if data is None:
+            return dict()
+
+        out_losses = []
+        for module_name, module_data in data.items():
+            module = modules[module_name]
+
+            loss_value = module.loss(**module_data, **kwargs)
+            if loss_value is not None:
+                out_losses.append(loss_value)
+
+        if len(out_losses) > 0:
+            return {name: torch.mean(torch.stack(out_losses))}
+        else:
+            return dict()
 
     def _init_weights(self):
         for m in self.modules():
