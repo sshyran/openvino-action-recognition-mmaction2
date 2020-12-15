@@ -63,26 +63,16 @@ class SimilarityGuidedSampling(nn.Module):
         out_features = torch.sum(weighted_features, dim=2)
 
         if return_extra_data:
-            return out_features, dict(similarities=similarities, groups=groups, centers=norm_centers)
+            return out_features, dict(similarities=similarities, groups=groups)
         else:
             return out_features
 
-    def loss(self, similarities, groups, centers, **kwargs):
+    def loss(self, similarities, groups, **kwargs):
         ce_loss = self._ce_loss(similarities, groups, self.ce_scale, self.num_bins)
         return ce_loss
-        # center_push_loss = self._center_push_loss(centers, self.valid_mask, self.center_threshold)
-        # return (ce_loss + center_push_loss) / 2.0
 
     @staticmethod
     def _ce_loss(similarities, groups, scale, num_classes):
         scores = scale * similarities.view(-1, num_classes)
         labels = groups.view(-1)
         return F.cross_entropy(scores, labels)
-
-    @staticmethod
-    def _center_push_loss(centers, valid_mask, threshold):
-        centers = centers.squeeze(2)
-        all_pairwise_scores = centers.permute(0, 2, 1).matmul(centers)
-        valid_pairwise_scores = all_pairwise_scores[:, valid_mask > 0.0]
-        losses = valid_pairwise_scores[valid_pairwise_scores > threshold] - threshold
-        return losses.mean() if losses.numel() > 0 else losses.sum()
