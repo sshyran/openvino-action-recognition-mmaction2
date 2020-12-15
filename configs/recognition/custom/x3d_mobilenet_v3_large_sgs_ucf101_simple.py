@@ -13,6 +13,8 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
+clip_len = 16
+frame_interval = 2
 
 model = dict(
     type='Recognizer3D',
@@ -27,7 +29,7 @@ model = dict(
         # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
         temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        temporal_kernels=(1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
+        temporal_kernels=(1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
@@ -78,7 +80,11 @@ img_norm_cfg = dict(
 )
 train_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, temporal_jitter=True),
+    dict(type='SampleFrames',
+         clip_len=clip_len,
+         frame_interval=frame_interval,
+         num_clips=1,
+         temporal_jitter=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='RandomRotate', delta=10, prob=0.5),
@@ -101,7 +107,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SampleFrames', clip_len=16, frame_interval=2, num_clips=1, test_mode=True),
+    dict(type='SampleFrames', clip_len=clip_len, frame_interval=frame_interval, num_clips=1, test_mode=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
