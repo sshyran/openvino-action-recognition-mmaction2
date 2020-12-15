@@ -13,7 +13,7 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 16
+clip_len = 32
 frame_interval = 2
 
 model = dict(
@@ -28,14 +28,14 @@ model = dict(
         pool1_stride_t=1,
         # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
-        temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-        temporal_kernels=(1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
+        temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
+        temporal_kernels=(1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
         use_temporal_avg_pool=True,
         out_conv=True,
         sgs_cfg=dict(
             idx=[1],
-            bins=[4],
+            bins=[8],
             internal_factor=3.0,
             embd_size=16
         )
