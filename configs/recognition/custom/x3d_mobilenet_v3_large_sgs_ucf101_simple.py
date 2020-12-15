@@ -13,7 +13,7 @@ reset_layer_suffixes = None
 
 # model settings
 input_img_size = 224
-clip_len = 32
+clip_len = 16
 frame_interval = 2
 
 model = dict(
