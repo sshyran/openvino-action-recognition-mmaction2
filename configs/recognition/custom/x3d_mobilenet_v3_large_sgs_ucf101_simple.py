@@ -145,11 +145,10 @@ data = dict(
 
 # optimizer
 optimizer = dict(
-    # type='SGD',
-    type='AdamW',
+    type='SGD',
     lr=1e-3,
-    # momentum=0.9,
-    # weight_decay=1e-4
+    momentum=0.9,
+    weight_decay=1e-4
 )
 optimizer_config = dict(
     grad_clip=dict(
@@ -168,13 +167,11 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customstep',
-    # step=[50, 70, 90],
-    step=[60],
+    step=[50, 70, 90],
     gamma=0.1,
     warmup='cos',
     warmup_epochs=10,
-    # warmup_ratio=1e-3,
-    warmup_ratio=1e-2,
+    warmup_ratio=1e-3,
 )
 total_epochs = 110
 
