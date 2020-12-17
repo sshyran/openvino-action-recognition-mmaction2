@@ -132,7 +132,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                 sgs_module_name = 'sgs_{}'.format(module_idx)
                 sgs_module = self.sgs_modules[sgs_module_name]
 
-                y, sgs_extra_data = sgs_module(y, return_extra_data=True)
+                local_y, sgs_extra_data = sgs_module(local_y, return_extra_data=True)
                 sgs_data[sgs_module_name] = sgs_extra_data
 
             if module_idx in self.glob_to_local_idx:
