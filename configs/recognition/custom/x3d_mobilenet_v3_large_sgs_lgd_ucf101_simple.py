@@ -8,7 +8,7 @@ root_dir = 'data'
 work_dir = None
 load_from = None
 resume_from = None
-reset_layer_prefixes = ['cls_head']
+reset_layer_prefixes = ['backbone.conv', 'cls_head']
 reset_layer_suffixes = None
 
 # model settings
