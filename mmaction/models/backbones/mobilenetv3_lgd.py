@@ -122,11 +122,18 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         glob_y = None
 
         local_outs = []
-        feature_data, att_data = dict(), dict()
+        feature_data, att_data, sgs_data = dict(), dict(), dict()
         for module_idx in range(len(self.features)):
             local_y = self._infer_module(
                 local_y, module_idx, return_extra_data, enable_extra_modules, feature_data, att_data
             )
+
+            if self.sgs_modules is not None and module_idx in self.sgs_idx:
+                sgs_module_name = 'sgs_{}'.format(module_idx)
+                sgs_module = self.sgs_modules[sgs_module_name]
+
+                y, sgs_extra_data = sgs_module(y, return_extra_data=True)
+                sgs_data[sgs_module_name] = sgs_extra_data
 
             if module_idx in self.glob_to_local_idx:
                 assert glob_y is not None
@@ -150,6 +157,6 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 
         if return_extra_data:
-            return local_outs, dict(feature_data=feature_data, att_data=att_data)
+            return local_outs, dict(feature_data=feature_data, att_data=att_data, sgs_data=sgs_data)
         else:
             return local_outs
