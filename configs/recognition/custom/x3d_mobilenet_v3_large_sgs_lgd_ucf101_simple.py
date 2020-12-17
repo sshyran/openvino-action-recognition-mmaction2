@@ -39,7 +39,8 @@ model = dict(
             idx=[1],
             bins=[8],
             internal_factor=3.0,
-            embd_size=16
+            embd_size=16,
+            enable_loss=False
         )
     ),
     reducer=dict(
@@ -148,7 +149,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-3,
+    lr=1e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -162,8 +163,8 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=0,
-    open_layers=['cls_head']
+    epochs=110,
+    open_layers=['backbone.lgd', 'backbone.conv', 'cls_head']
 )
 
 # learning policy

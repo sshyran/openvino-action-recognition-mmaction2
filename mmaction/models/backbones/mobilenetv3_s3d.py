@@ -388,6 +388,8 @@ class MobileNetV3_S3D(nn.Module):
                     norm=weight_norm
                 )
                 self.sgs_idx.append(layer_id + num_layers_before)
+
+            self.enable_sgs_loss = sgs_cfg.get('enable_loss', True)
         else:
             self.sgs_modules = None
 
@@ -423,8 +425,11 @@ class MobileNetV3_S3D(nn.Module):
                 sgs_module_name = 'sgs_{}'.format(module_idx)
                 sgs_module = self.sgs_modules[sgs_module_name]
 
-                y, sgs_extra_data = sgs_module(y, return_extra_data=True)
-                sgs_data[sgs_module_name] = sgs_extra_data
+                if self.enable_sgs_loss:
+                    y, sgs_extra_data = sgs_module(y, return_extra_data=True)
+                    sgs_data[sgs_module_name] = sgs_extra_data
+                else:
+                    y = sgs_module(y)
 
             if module_idx in self.out_ids:
                 outs.append(y)
@@ -494,7 +499,7 @@ class MobileNetV3_S3D(nn.Module):
 
     @staticmethod
     def _process_loss(data, modules, name, **kwargs):
-        if data is None:
+        if data is None or len(data) == 0:
             return dict()
 
         out_losses = []

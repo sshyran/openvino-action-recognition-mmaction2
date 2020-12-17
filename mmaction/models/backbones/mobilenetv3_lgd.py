@@ -34,7 +34,7 @@ class UpsampleBlock(nn.Module):
         ]
         self.conv = nn.Sequential(*layers)
 
-        # self._reset_weights()
+        self._reset_weights()
 
     def forward(self, x):
         return self.conv(x)
@@ -87,7 +87,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         self.glob_channels_num = [self.channels_num[idx] for idx in self.local_to_glob_idx]
         self.channel_factor = channel_factor
 
-        self.upsample_modules = nn.ModuleDict({
+        self.lgd_upsample = nn.ModuleDict({
             f'upsample_{idx}': UpsampleBlock(
                 glob_channels,
                 self.channels_num[idx],
@@ -96,7 +96,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             )
             for idx, glob_channels in zip(self.glob_to_local_idx, self.glob_channels_num)
         })
-        self.pooling_modules = nn.ModuleDict({
+        self.lgd_pool = nn.ModuleDict({
             f'pooling_{idx}': PoolingBlock(
                 self.channels_num[idx],
                 self.channels_num[idx],
@@ -105,7 +105,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
             )
             for idx in self.local_to_glob_idx
         })
-        self.glob_modules = nn.ModuleDict({
+        self.lgd_glob = nn.ModuleDict({
             f'glob_{idx}': GlobBlock(
                 glob_channels,
                 self.channels_num[idx],
@@ -132,21 +132,24 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                 sgs_module_name = 'sgs_{}'.format(module_idx)
                 sgs_module = self.sgs_modules[sgs_module_name]
 
-                local_y, sgs_extra_data = sgs_module(local_y, return_extra_data=True)
-                sgs_data[sgs_module_name] = sgs_extra_data
+                if self.enable_sgs_loss:
+                    local_y, sgs_extra_data = sgs_module(local_y, return_extra_data=True)
+                    sgs_data[sgs_module_name] = sgs_extra_data
+                else:
+                    local_y = sgs_module(local_y)
 
             if module_idx in self.glob_to_local_idx:
                 assert glob_y is not None
 
-                upsample_module = self.upsample_modules[f'upsample_{module_idx}']
+                upsample_module = self.lgd_upsample[f'upsample_{module_idx}']
                 local_y = upsample_module(glob_y) + local_y
 
             if module_idx in self.local_to_glob_idx:
-                pooling_module = self.pooling_modules[f'pooling_{module_idx}']
+                pooling_module = self.lgd_pool[f'pooling_{module_idx}']
                 pooled_local_y = pooling_module(local_y)
 
                 if glob_y is not None:
-                    glob_module = self.glob_modules[f'glob_{module_idx}']
+                    glob_module = self.lgd_glob[f'glob_{module_idx}']
                     glob_y = glob_module(glob_y) + pooled_local_y
                 else:
                     glob_y = pooled_local_y
