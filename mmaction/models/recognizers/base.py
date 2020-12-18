@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from mmcv.runner import auto_fp16
 
 from .. import builder
-from ...core.ops import rsc
+from ...core.ops import rsc, NormRegularizer
 
 
 class EvalModeSetter:
@@ -61,7 +61,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                  train_cfg=None,
                  test_cfg=None,
                  bn_eval=False,
-                 bn_frozen=False):
+                 bn_frozen=False,
+                 reg_cfg=None):
         super().__init__()
 
         self.train_cfg = train_cfg
@@ -83,6 +84,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 mode=train_cfg.clip_mixing.mode,
                 loss_weight=train_cfg.clip_mixing.weight
             ))
+
+        self.regularizer = NormRegularizer(**reg_cfg) if reg_cfg is not None else None
 
         self.init_weights()
 
@@ -275,6 +278,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 losses['loss/clip_mix'] = self.clip_mixing_loss(
                     trg_scores, trg_norm_embd, num_clips, cl_head.last_scale
                 )
+
+        if self.regularizer is not None:
+            losses['loss/reg'] = self.regularizer(self.backbone)
 
         return losses
 
