@@ -40,15 +40,15 @@ model = dict(
             bins=[8],
             internal_factor=3.0,
             embd_size=16,
-            enable_loss=False
+            enable_loss=True
         )
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
         modules=[
             dict(type='AverageSpatialTemporalModule',
-                 temporal_size=1,
-                 spatial_size=1),
+                 temporal_size=4,
+                 spatial_size=7),
         ],
     ),
     cls_head=dict(
@@ -163,7 +163,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=110,
+    epochs=0,
     open_layers=['backbone.lgd', 'backbone.conv', 'cls_head']
 )
 

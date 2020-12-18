@@ -156,7 +156,8 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
 
             if module_idx in self.out_ids:
                 # local_outs.append(local_y)
-                local_outs.append(glob_y)
+                # local_outs.append(glob_y)
+                local_outs.append(local_y + glob_y)
 
         local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 
