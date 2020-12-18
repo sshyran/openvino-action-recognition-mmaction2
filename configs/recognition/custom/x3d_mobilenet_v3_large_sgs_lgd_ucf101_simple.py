@@ -47,8 +47,8 @@ model = dict(
         type='AggregatorSpatialTemporalModule',
         modules=[
             dict(type='AverageSpatialTemporalModule',
-                 temporal_size=4,
-                 spatial_size=7),
+                 temporal_size=1,
+                 spatial_size=1),
         ],
     ),
     cls_head=dict(
