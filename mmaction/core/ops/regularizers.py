@@ -61,12 +61,14 @@ class NormRegularizer(nn.Module):
         weights_matrix = weights_matrix.view(num_filters, -1)
         norms = torch.sqrt(torch.sum(weights_matrix ** 2, dim=-1))
 
-        norm_ratio = torch.max(norms.detach()) / torch.min(norms.detach())
-        median_norm = torch.median(norms.detach())
+        with torch.no_grad():
+            norm_ratio = torch.max(norms) / torch.min(norms)
+            median_norm = torch.median(norms)
+
         if norm_ratio < max_ratio and median_norm > min_norm:
             return 0.0
 
-        trg_norm = max(float(min_norm), median_norm)
+        trg_norm = max(min_norm, median_norm)
         losses = (norms - trg_norm) ** 2
         loss = losses.mean()
 

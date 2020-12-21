@@ -61,11 +61,11 @@ model = dict(
             loss_weight=1.0
         ),
     ),
-    # reg_cfg=dict(
-    #     max_ratio=10.0,
-    #     min_norm=0.5,
-    #     weight=1.0
-    # )
+    reg_cfg=dict(
+        max_ratio=10.0,
+        min_norm=0.1,
+        weight=1e-3
+    )
 )
 
 # model training and testing settings
