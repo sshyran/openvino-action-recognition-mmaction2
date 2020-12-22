@@ -99,6 +99,7 @@ class VideoDownloader:
                        '-threads', '1',
                        '-loglevel', '"panic"',
                        '-i', '"{}"'.format(input_filename),
+                       '-pix_fmt', ' yuv420p',
                        '-ss', str(start_time),
                        '-t', str(end_time - start_time),
                        '-vf', 'scale=-2:{}'.format(scale),
@@ -113,6 +114,7 @@ class VideoDownloader:
                        '-threads', '1',
                        '-loglevel', '"panic"',
                        '-i', '"{}"'.format(input_filename),
+                       '-pix_fmt', ' yuv420p',
                        '-ss', str(start_time),
                        '-t', str(end_time - start_time),
                        '-vf', 'scale={}:-2'.format(scale),
@@ -138,21 +140,23 @@ class VideoDownloader:
 
     @staticmethod
     def _check_video(video_filename):
-        ok = False
-        try:
-            container = VideoReader(video_filename, num_threads=1)
-            if len(container) > 0:
-                ok = True
+        return video_filename, True, "Checked"
 
-            del container
-        except:
-            pass
-
-        if ok:
-            return video_filename, True, "Checked"
-        else:
-            remove(video_filename)
-            return video_filename, False, "Invalid video file"
+        # ok = False
+        # try:
+        #     container = VideoReader(video_filename, num_threads=1)
+        #     if len(container) > 0:
+        #         ok = True
+        #
+        #     del container
+        # except:
+        #     pass
+        #
+        # if ok:
+        #     return video_filename, True, "Checked"
+        # else:
+        #     remove(video_filename)
+        #     return video_filename, False, "Invalid video file"
 
     def __call__(self, tasks):
         if len(tasks) == 0:
