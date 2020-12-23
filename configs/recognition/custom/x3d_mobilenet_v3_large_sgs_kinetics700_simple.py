@@ -181,7 +181,7 @@ checkpoint_config = dict(
     interval=1
 )
 evaluation = dict(
-    interval=10,
+    interval=1,
     metrics=['top_k_accuracy', 'mean_class_accuracy', 'ranking_mean_average_precision'],
     topk=(1, 5),
 )
