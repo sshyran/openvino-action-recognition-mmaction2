@@ -71,7 +71,8 @@ def train_model(model,
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False,
-            find_unused_parameters=find_unused_parameters
+            find_unused_parameters=find_unused_parameters,
+            gradient_as_bucket_view=True
         )
     else:
         model = MMDataParallel(
