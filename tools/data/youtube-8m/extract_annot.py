@@ -86,7 +86,7 @@ def parse_records(dataset):
     return out_records, set(all_labels)
 
 
-def process_video_id(src_video_id, num_attempts=10):
+def process_video_id(src_video_id, num_attempts=5):
     assert isinstance(src_video_id, str)
     assert len(src_video_id) == 4
     assert num_attempts > 0
@@ -96,10 +96,11 @@ def process_video_id(src_video_id, num_attempts=10):
 
     for _ in range(num_attempts):
         response = requests.get(url)
-        if response.status_code == 200:
+        if response.status_code in [200, 403]:
             break
 
     if response.status_code != 200:
+        print(f'[WARNING] Unable to load {url}: {response.status_code}')
         return src_video_id, None
 
     answer = response.text
@@ -114,24 +115,43 @@ def process_video_id(src_video_id, num_attempts=10):
     return src_video_id, trg_video_id
 
 
-def load_id_map(src_ids, num_jobs=1):
-    out_map = dict()
-    for src_id in tqdm(src_ids, desc='Loading video IDs', leave=False):
-        out_map[src_id] = ''
+def load_ids_map(file_path):
+    if not exists(file_path):
+        return dict()
 
+    with open(file_path) as input_stream:
+        ids_map = json.load(input_stream)
+
+    return ids_map
+
+
+def dump_ids_map(ids_map, file_path):
+    if len(ids_map) == 0:
+        return
+
+    with open(file_path, 'w') as output_stream:
+        json.dump(ids_map, output_stream)
+
+
+def prepare_tasks(in_map, src_ids):
+    return list(set(src_ids) - set(in_map.keys()))
+
+
+def request_ids_map(in_map, tasks, num_jobs=1):
     if num_jobs == 1:
         tuple_list = []
-        for src_id in tqdm(src_ids, desc='Loading video IDs', leave=False):
+        for src_id in tqdm(tasks, desc='Loading video IDs', leave=False):
             tuple_list.append(process_video_id(src_id))
     else:
         tuple_list = Parallel(n_jobs=num_jobs, verbose=10)(
             delayed(process_video_id)(src_id)
-            for src_id in src_ids
+            for src_id in tasks
         )
 
-    out_map = {src_id: trg_id for src_id, trg_id in tuple_list if trg_id is not None}
+    ext_map = {src_id: trg_id for src_id, trg_id in tuple_list if trg_id is not None}
+    in_map.update(ext_map)
 
-    return out_map
+    return in_map
 
 
 def dump_records(records, ids_map, out_file):
@@ -148,6 +168,7 @@ def dump_records(records, ids_map, out_file):
 def main():
     parser = ArgumentParser()
     parser.add_argument('--input_dir', '-i', type=str, required=True)
+    parser.add_argument('--output_ids_map', '-m', type=str, required=True)
     parser.add_argument('--output_annot', '-o', type=str, required=True)
     parser.add_argument('--num_jobs', '-n', type=int, required=False, default=24)
     args = parser.parse_args()
@@ -164,12 +185,21 @@ def main():
     num_records = sum([len(l) for l in records.values()])
     print(f'Collected {num_videos} videos and {num_records} records ({len(labels)} labels).')
 
+    video_ids_map = load_ids_map(args.output_ids_map)
+    print(f'Loaded {len(video_ids_map)} IDs map.')
+
     src_video_ids = records.keys()
-    video_ids_map = load_id_map(src_video_ids, num_jobs=args.num_jobs)
-    print(f'Processed {len(video_ids_map)} / {len(src_video_ids)} IDs.')
+    tasks = prepare_tasks(video_ids_map, src_video_ids)
+    print(f'Prepared {len(tasks)} tasks.')
+
+    video_ids_map = request_ids_map(video_ids_map, tasks, num_jobs=args.num_jobs)
+    print(f'Available {len(video_ids_map)} / {len(src_video_ids)} IDs.')
+
+    dump_ids_map(video_ids_map, args.output_ids_map)
+    print(f'Dumped IDs map to: {args.output_ids_map}')
 
     dump_records(records, video_ids_map, args.output_annot)
-    print(f'Dumped to: {args.output_annot}')
+    print(f'Dumped records to: {args.output_annot}')
 
 
 if __name__ == '__main__':
