@@ -181,7 +181,7 @@ checkpoint_config = dict(
     interval=1
 )
 evaluation = dict(
-    interval=0,
+    interval=1,
     metrics=['top_k_accuracy', 'mean_class_accuracy', 'ranking_mean_average_precision'],
     topk=(1, 5),
 )
@@ -199,4 +199,4 @@ log_config = dict(
 dist_params = dict(
     backend='nccl'
 )
-find_unused_parameters = False
+find_unused_parameters = True
