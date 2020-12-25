@@ -151,10 +151,10 @@ optimizer = dict(
     weight_decay=1e-4
 )
 optimizer_config = dict(
-    # grad_clip=dict(
-    #     max_norm=40,
-    #     norm_type=2
-    # )
+    grad_clip=dict(
+        max_norm=40,
+        norm_type=2
+    )
 )
 
 # parameter manager
