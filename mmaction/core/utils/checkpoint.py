@@ -99,7 +99,7 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
             logger.warning(warning_msg)
 
 
-def load_checkpoint(model, filename, map_location=None, strict=False, logger=None,
+def load_checkpoint(model, filename, map_location='cpu', strict=False, logger=None,
                     force_matching=False, show_converted=False,
                     ignore_prefixes=None, ignore_suffixes=None):
     checkpoint = _load_checkpoint(filename, map_location)

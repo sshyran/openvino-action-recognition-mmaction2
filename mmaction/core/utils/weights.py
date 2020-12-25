@@ -12,7 +12,7 @@ def _is_compatible(shape_a, shape_b):
 
 def inflate_weights(model, state_dict_2d, logger=None):
     if isinstance(state_dict_2d, str):
-        state_dict_2d = _load_checkpoint(state_dict_2d)
+        state_dict_2d = _load_checkpoint(state_dict_2d, map_location='cpu')
         if 'state_dict' in state_dict_2d:
             state_dict_2d = state_dict_2d['state_dict']
     assert isinstance(state_dict_2d, dict)

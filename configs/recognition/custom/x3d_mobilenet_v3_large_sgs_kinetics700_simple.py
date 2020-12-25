@@ -199,4 +199,4 @@ log_config = dict(
 dist_params = dict(
     backend='nccl'
 )
-find_unused_parameters = True
+find_unused_parameters = False
