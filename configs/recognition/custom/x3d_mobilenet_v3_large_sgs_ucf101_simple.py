@@ -169,6 +169,7 @@ lr_config = dict(
     policy='customstep',
     gamma=0.1,
     step=[50, 70, 90],
+    fixed='constant',
     fixed_epochs=5,
     fixed_ratio=10.0,
     warmup='cos',
