@@ -133,7 +133,7 @@ data = dict(
     ),
     val=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     ),
     test=dict(
