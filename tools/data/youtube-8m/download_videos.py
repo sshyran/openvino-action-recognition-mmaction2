@@ -7,10 +7,10 @@ from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from shutil import rmtree
 
-# try:
-#     from decord import VideoReader
-# except ImportError:
-#     raise ImportError('Please run "pip install decord" to install Decord first.')
+try:
+    from decord import VideoReader
+except ImportError:
+    raise ImportError('Please run "pip install decord" to install Decord first.')
 
 Segment = namedtuple('Segment', 'output_filename, start_time, end_time')
 
@@ -174,23 +174,21 @@ class VideoDownloader:
 
     @staticmethod
     def _check_video(video_filename):
-        return video_filename, True, "Checked"
+        ok = False
+        try:
+            container = VideoReader(video_filename, num_threads=1)
+            if len(container) > 0:
+                ok = True
 
-        # ok = False
-        # try:
-        #     container = VideoReader(video_filename, num_threads=1)
-        #     if len(container) > 0:
-        #         ok = True
-        #
-        #     del container
-        # except:
-        #     pass
-        #
-        # if ok:
-        #     return video_filename, True, "Checked"
-        # else:
-        #     remove(video_filename)
-        #     return video_filename, False, "Invalid video file"
+            del container
+        except:
+            pass
+
+        if ok:
+            return video_filename, True, "Checked"
+        else:
+            remove(video_filename)
+            return video_filename, False, "Invalid video file"
 
     @staticmethod
     def _log(*args):

@@ -14,7 +14,7 @@ Segment = namedtuple('Segment', 'output_filename, start_time, end_time')
 
 
 class VideoFixer:
-    def __init__(self, num_jobs, tmp_dir, max_num_attempts=5, verbose=10):
+    def __init__(self, num_jobs, tmp_dir, max_num_attempts=1, verbose=10):
         self.num_jobs = num_jobs
         assert self.num_jobs > 0
         self.verbose = verbose
@@ -54,9 +54,9 @@ class VideoFixer:
         if valid:
             return
 
+        tmp_video_path = join(self.tmp_dir, basename(video_path))
         for _ in range(self.max_num_attempts):
-            tmp_video_path = join(self.tmp_dir, basename(video_path))
-            valid, message = self._fix_video(video_path, tmp_video_path)
+            valid, _ = self._fix_video(video_path, tmp_video_path)
             if not valid:
                 continue
 
@@ -72,6 +72,7 @@ class VideoFixer:
             break
 
         if not valid:
+            remove(video_path)
             self._log(video_path, False, 'Invalid')
 
     @staticmethod
@@ -132,11 +133,6 @@ class VideoFixer:
         print(str_template.format(output_filename, msg))
 
 
-def ensure_dir_exists(dir_path):
-    if not exists(dir_path):
-        makedirs(dir_path)
-
-
 def collect_video_paths(root_dir, extension):
     return [join(root_dir, f) for f in listdir(root_dir) if isfile(join(root_dir, f)) and f.endswith(extension)]
 
@@ -144,13 +140,10 @@ def collect_video_paths(root_dir, extension):
 def main():
     parser = ArgumentParser()
     parser.add_argument('--input_dir', '-i', type=str, required=True)
-    parser.add_argument('--output_dir', '-o', type=str, required=True)
     parser.add_argument('--extension', '-e', type=str, required=False, default='avi')
     parser.add_argument('--num_jobs', '-n', type=int, required=False, default=24)
     parser.add_argument('--tmp_dir', '-t', type=str, required=False, default='/tmp/video_fixer')
     args = parser.parse_args()
-
-    ensure_dir_exists(args.output_dir)
 
     video_paths = collect_video_paths(args.input_dir, args.extension)
     print(f'Collected {len(video_paths)} videos.')
