@@ -219,28 +219,31 @@ class RandomResizedCrop(object):
         area = img_h * img_w
 
         min_ar, max_ar = aspect_ratio_range
-        aspect_ratios = np.exp(
-            np.random.uniform(
-                np.log(min_ar), np.log(max_ar), size=max_attempts))
+        aspect_ratios = np.exp(np.random.uniform(np.log(min_ar), np.log(max_ar), size=max_attempts))
         target_areas = np.random.uniform(*area_range, size=max_attempts) * area
-        candidate_crop_w = np.round(np.sqrt(target_areas *
-                                            aspect_ratios)).astype(np.int32)
-        candidate_crop_h = np.round(np.sqrt(target_areas /
-                                            aspect_ratios)).astype(np.int32)
 
+        candidate_crop_w = np.round(np.sqrt(target_areas * aspect_ratios)).astype(np.int32)
+        candidate_crop_h = np.round(np.sqrt(target_areas / aspect_ratios)).astype(np.int32)
+
+        valid_crop_bbox = None
         for i in range(max_attempts):
             crop_w = candidate_crop_w[i]
             crop_h = candidate_crop_h[i]
             if crop_h <= img_h and crop_w <= img_w:
                 x_offset = random.randint(0, img_w - crop_w)
                 y_offset = random.randint(0, img_h - crop_h)
-                return x_offset, y_offset, x_offset + crop_w, y_offset + crop_h
+
+                valid_crop_bbox = x_offset, y_offset, x_offset + crop_w, y_offset + crop_h
+                break
 
         # Fallback
-        crop_size = min(img_h, img_w)
-        x_offset = (img_w - crop_size) // 2
-        y_offset = (img_h - crop_size) // 2
-        return x_offset, y_offset, x_offset + crop_size, y_offset + crop_size
+        if valid_crop_bbox is None:
+            crop_size = min(img_h, img_w)
+            x_offset = (img_w - crop_size) // 2
+            y_offset = (img_h - crop_size) // 2
+            valid_crop_bbox = x_offset, y_offset, x_offset + crop_size, y_offset + crop_size
+
+        return valid_crop_bbox
 
     def __call__(self, results):
         """Performs the RandomResizeCrop augmentation.
