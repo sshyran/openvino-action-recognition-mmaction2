@@ -55,10 +55,45 @@ model = dict(
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=False,
+        embedding=True,
+        embd_size=256,
+        num_centers=1,
+        st_scale=10.0,
+        reg_weight=1.0,
+        reg_threshold=0.1,
+        enable_sampling=False,
+        adaptive_sampling=False,
+        sampling_angle_std=3.14 / 2 / 5,
+        enable_class_mixing=False,
+        class_mixing_alpha=0.2,
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            loss_weight=1.0
+            type='AMSoftmaxLoss',
+            target_loss='ce',
+            scale_cfg=dict(
+                type='PolyScalarScheduler',
+                start_scale=30.0,
+                end_scale=5.0,
+                power=1.2,
+                num_epochs=41.276,
+            ),
+            pr_product=False,
+            margin_type='cos',
+            margin=0.35,
+            gamma=0.0,
+            t=1.0,
+            conf_penalty_weight=0.085,
+            filter_type='positives',
+            top_k=None,
+            enable_class_weighting=False,
+            enable_adaptive_margins=False,
+        ),
+        losses_extra=dict(
+            loss_lpush=dict(
+                type='LocalPushLoss',
+                margin=0.1,
+                weight=1.0,
+                smart_margin=True,
+            ),
         ),
     ),
 )
@@ -95,11 +130,13 @@ train_pipeline = [
          max_wh_scale_gap=1),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
+    # dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='PhotometricDistortion',
          brightness_range=(65, 190),
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
+    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -107,7 +144,11 @@ train_pipeline = [
 ]
 val_pipeline = [
     dict(type='DecordInit'),
-    dict(type='SampleFrames', clip_len=clip_len, frame_interval=frame_interval, num_clips=1, test_mode=True),
+    dict(type='SampleFrames',
+         clip_len=clip_len,
+         frame_interval=frame_interval,
+         num_clips=1,
+         test_mode=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
     dict(type='CenterCrop', crop_size=(input_img_size, input_img_size)),
@@ -146,7 +187,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=4e-3,
+    lr=1e-3,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -168,13 +209,13 @@ params_config = dict(
 lr_config = dict(
     policy='customstep',
     gamma=0.1,
-    step=[50, 70, 90],
+    step=[50, 80],
     fixed='cos',
     fixed_epochs=5,
-    fixed_ratio=2.5,
+    fixed_ratio=10.0,
     warmup='cos',
     warmup_epochs=5,
-    warmup_ratio=2.5e-3,
+    warmup_ratio=1e-2,
 )
 total_epochs = 110
 
