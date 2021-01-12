@@ -201,7 +201,7 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=10,
     open_layers=['cls_head']
 )
 
@@ -211,10 +211,10 @@ lr_config = dict(
     gamma=0.1,
     step=[50, 80],
     fixed='cos',
-    fixed_epochs=5,
+    fixed_epochs=10,
     fixed_ratio=10.0,
     warmup='cos',
-    warmup_epochs=5,
+    warmup_epochs=10,
     warmup_ratio=1e-2,
 )
 total_epochs = 110
