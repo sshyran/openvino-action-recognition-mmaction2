@@ -5,7 +5,7 @@ from mmcv.runner.hooks import Hook
 
 
 class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
-    schedulers = ['constant', 'linear', 'cos']
+    schedulers = ['constant', 'semi-constant', 'linear', 'cos']
 
     def __init__(self,
                  fixed=None,
@@ -53,6 +53,13 @@ class BaseLrUpdaterHook(Hook, metaclass=ABCMeta):
         progress = float(cur_iters) / float(max_iters)
         if policy == 'constant':
             k = start_scale
+        elif policy == 'semi-constant':
+            threshold = 0.8
+            if progress < threshold:
+                k = start_scale
+            else:
+                progress = (progress - threshold) / (1.0 - threshold)
+                k = (end_scale - start_scale) * progress + start_scale
         elif policy == 'linear':
             k = (end_scale - start_scale) * progress + start_scale
         elif policy == 'cos':
