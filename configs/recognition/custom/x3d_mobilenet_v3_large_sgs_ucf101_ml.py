@@ -100,7 +100,7 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=False, drop_p=0.33),
+    self_challenging=dict(enable=True, drop_p=0.33),
     clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
