@@ -100,8 +100,8 @@ model = dict(
 
 # model training and testing settings
 train_cfg = dict(
-    self_challenging=dict(enable=True, drop_p=0.33),
-    clip_mixing=dict(enable=True, mode='logits', weight=0.2)
+    self_challenging=dict(enable=False, drop_p=0.33),
+    clip_mixing=dict(enable=False, mode='logits', weight=0.2)
 )
 test_cfg = dict(
     average_clips=None
@@ -118,7 +118,7 @@ train_pipeline = [
     dict(type='SampleFrames',
          clip_len=clip_len,
          frame_interval=frame_interval,
-         num_clips=2,
+         num_clips=1,
          temporal_jitter=True),
     dict(type='DecordDecode'),
     dict(type='Resize', scale=(-1, 256)),
@@ -128,13 +128,13 @@ train_pipeline = [
          aspect_ratio_range=(3. / 4., 4. / 3.)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='BlockDropout', scale=0.2, prob=0.1),
+    # dict(type='BlockDropout', scale=0.2, prob=0.1),
     dict(type='PhotometricDistortion',
          brightness_range=(65, 190),
          contrast_range=(0.6, 1.4),
          saturation_range=(0.7, 1.3),
          hue_delta=18),
-    dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
+    # dict(type='MixUp',  annot='imagenet_train_list.txt', imgs_root='imagenet/train', alpha=0.2),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
