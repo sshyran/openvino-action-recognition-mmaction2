@@ -1192,10 +1192,22 @@ class BlockDropout(object):
 
 @PIPELINES.register_module()
 class MixUp(object):
-    def __init__(self, root_dir, annot, imgs_root, alpha=0.2):
+    def __init__(self, root_dir, annot, imgs_root, alpha=0.2, beta=None, scale=1.0):
         if not isinstance(alpha, (int, float)):
             raise TypeError(f'Alpha must be an int or float, but got {type(alpha)}')
         self.alpha = float(alpha)
+
+        if beta is None:
+            self.beta = self.alpha
+        else:
+            if not isinstance(beta, (int, float)):
+                raise TypeError(f'Beta must be an int or float, but got {type(beta)}')
+
+            self.beta = float(beta)
+
+        if not isinstance(scale, (int, float)):
+            raise TypeError(f'Scale must be an int or float, but got {type(scale)}')
+        self.scale = float(scale)
 
         annot = osp.join(root_dir, annot)
         if not osp.exists(annot):
@@ -1237,7 +1249,7 @@ class MixUp(object):
 
         processed_data = []
         for clip_id in range(num_clips):
-            alpha = np.random.beta(self.alpha, self.alpha)
+            alpha = self.scale * np.random.beta(self.alpha, self.beta)
             alpha = alpha if alpha < 0.5 else 1.0 - alpha
 
             mixup_image_idx = np.random.randint(len(self.image_paths))
@@ -1256,7 +1268,11 @@ class MixUp(object):
         return results
 
     def __repr__(self):
-        repr_str = f'{self.__class__.__name__}(alpha={self.alpha}, size={len(self.image_paths)})'
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'alpha={self.alpha}, ' \
+                   f'beta={self.beta}, ' \
+                   f'scale={self.scale}, ' \
+                   f'size={len(self.image_paths)})'
         return repr_str
 
 
