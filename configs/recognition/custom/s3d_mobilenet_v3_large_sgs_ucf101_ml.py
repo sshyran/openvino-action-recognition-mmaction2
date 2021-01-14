@@ -217,6 +217,7 @@ params_config = dict(
 lr_config = dict(
     policy='customstep',
     step=[30, 50],
+    fixed='constant',
     fixed_epochs=5,
     fixed_ratio=10.0,
     gamma=0.1,
