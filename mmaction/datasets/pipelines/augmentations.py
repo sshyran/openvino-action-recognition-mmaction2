@@ -219,7 +219,7 @@ class RandomResizedCrop(object):
         area = img_h * img_w
 
         min_ar, max_ar = aspect_ratio_range
-        aspect_ratios = np.random.uniform(min_ar, max_ar, size=max_attempts)
+        aspect_ratios = min_ar + (max_ar - min_ar) * np.random.beta(5, 5, size=max_attempts)
         target_areas = np.random.uniform(*area_range, size=max_attempts) * area
 
         candidate_crop_w = np.round(np.sqrt(target_areas * aspect_ratios)).astype(np.int32)
@@ -1249,13 +1249,11 @@ class MixUp(object):
 
         processed_data = []
         for clip_id in range(num_clips):
-            alpha = self.scale * np.random.beta(self.alpha, self.beta)
-            alpha = alpha if alpha < 0.5 else 1.0 - alpha
-
             mixup_image_idx = np.random.randint(len(self.image_paths))
             mixup_image_path = self.image_paths[mixup_image_idx]
             mixup_image = self._prepare_mixup_image(mixup_image_path, img_data[0].shape[:2])
 
+            alpha = 0.5 * self.scale * np.random.beta(self.alpha, self.beta)
             scaled_mixup_image = alpha * mixup_image.astype(np.float32)
 
             for i in range(clip_len):
