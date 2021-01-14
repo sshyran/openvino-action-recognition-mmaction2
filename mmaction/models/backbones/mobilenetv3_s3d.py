@@ -395,7 +395,9 @@ class MobileNetV3_S3D(nn.Module):
 
         # building last several layers
         if out_conv:
+            exp_size = self.cfg[-1][1]
             out_channels = make_divisible(exp_size * width_mult, 8)
+
             self.conv = nn.Sequential(
                 nn.Sequential(*conv_1x1x1_bn(input_channel, out_channels, norm=weight_norm),
                               HSwish()),
