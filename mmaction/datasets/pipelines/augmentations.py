@@ -219,7 +219,7 @@ class RandomResizedCrop(object):
         area = img_h * img_w
 
         min_ar, max_ar = aspect_ratio_range
-        aspect_ratios = min_ar + (max_ar - min_ar) * np.random.beta(5, 5, size=max_attempts)
+        aspect_ratios = np.exp(np.random.uniform(np.log(min_ar), np.log(max_ar), size=max_attempts))
         target_areas = np.random.uniform(*area_range, size=max_attempts) * area
 
         candidate_crop_w = np.round(np.sqrt(target_areas * aspect_ratios)).astype(np.int32)
