@@ -34,6 +34,8 @@ class SimilarityGuidedSampling(nn.Module):
         self.register_buffer('valid_mask', torch.from_numpy(valid_mask))
 
     def forward(self, x, return_extra_data=False):
+        _, c, _, h, w = x.size()
+
         embds = self.encoder(x).squeeze(4).squeeze(3)
         norm_embd = normalize(embds, dim=1)
 
@@ -55,12 +57,18 @@ class SimilarityGuidedSampling(nn.Module):
 
         similarities = torch.sum(norm_embd.unsqueeze(3) * norm_centers, dim=1).clamp(-1.0, 1.0)
 
-        weights = 0.5 * (1.0 + similarities) * group_mask
-        sum_weights = torch.sum(weights, dim=1, keepdim=True)
-        norm_weights = torch.where(sum_weights > 0.0, weights / sum_weights, torch.ones_like(sum_weights))
+        with torch.no_grad():
+            if self.training:
+                scores = (1.0 + similarities) * group_mask
+                flat_scores = scores.transpose(1, 2).view(-1, scores.size(1))
 
-        weighted_features = x.unsqueeze(3) * norm_weights.unsqueeze(1).unsqueeze(4).unsqueeze(5)
-        out_features = torch.sum(weighted_features, dim=2)
+                temporal_pos = torch.multinomial(flat_scores, num_samples=1).view(-1, self.num_bins)
+            else:
+                temporal_pos = torch.argmax(similarities * group_mask, dim=1)
+
+            ind = temporal_pos.unsqueeze(1).unsqueeze(3).unsqueeze(4).repeat(1, c, 1, h, w)
+
+        out_features = torch.gather(x, 2, ind)
 
         if return_extra_data:
             return out_features, dict(similarities=similarities, groups=groups)
