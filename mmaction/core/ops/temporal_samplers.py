@@ -60,7 +60,7 @@ class SimilarityGuidedSampling(nn.Module):
         with torch.no_grad():
             if self.training:
                 scores = (1.0 + similarities) * group_mask
-                flat_scores = scores.transpose(1, 2).view(-1, scores.size(1))
+                flat_scores = scores.transpose(1, 2).reshape(-1, scores.size(1))
 
                 temporal_pos = torch.multinomial(flat_scores, num_samples=1).view(-1, self.num_bins)
             else:
