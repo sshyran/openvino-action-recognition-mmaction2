@@ -26,7 +26,7 @@ model = dict(
         pretrained2d=False,
         width_mult=1.0,
         pool1_stride_t=1,
-        # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
+        # block ids:      0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
         temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
         temporal_kernels=(1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
