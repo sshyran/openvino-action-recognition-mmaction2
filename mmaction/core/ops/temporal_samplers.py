@@ -9,8 +9,8 @@ from .conv import conv_1x1x1_bn
 
 
 class SimilarityGuidedSampling(nn.Module):
-    def __init__(self, in_planes, num_bins, internal_factor=2.0, embd_size=32,
-                 ce_scale=10.0, center_threshold=0.5, pool_method='avg+max', norm='none'):
+    def __init__(self, in_planes, num_bins, internal_factor=2.0,
+                 ce_scale=10.0, center_threshold=0.5, norm='none'):
         super(SimilarityGuidedSampling, self).__init__()
 
         self.num_bins = num_bins

@@ -39,7 +39,6 @@ model = dict(
             idx=[1],
             bins=[8],
             internal_factor=3.0,
-            embd_size=16,
             enable_loss=True
         )
     ),
