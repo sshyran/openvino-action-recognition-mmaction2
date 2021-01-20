@@ -150,7 +150,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=4e-3,
+    lr=1e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -164,23 +164,21 @@ optimizer_config = dict(
 # parameter manager
 params_config = dict(
     type='FreezeLayers',
-    epochs=5,
+    epochs=0,
     open_layers=['cls_head']
 )
 
 # learning policy
 lr_config = dict(
     policy='customstep',
-    gamma=0.1,
     step=[50, 70, 90],
-    fixed='cos',
-    fixed_epochs=5,
-    fixed_ratio=2.5,
+    gamma=0.1,
     warmup='cos',
-    warmup_epochs=5,
-    warmup_ratio=2.5e-3,
+    warmup_epochs=10,
+    warmup_ratio=1e-3,
 )
 total_epochs = 110
+
 
 # workflow
 workflow = [('train', 1)]

@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from .math import normalize
 from .nonlinearities import HSwish
 from .conv import conv_1x1x1_bn
-from .pooling import AdaptivePool3D
 
 
 class SimilarityGuidedSampling(nn.Module):
@@ -23,10 +22,9 @@ class SimilarityGuidedSampling(nn.Module):
 
         hidden_dim = int(internal_factor * in_planes)
         layers = [
-            AdaptivePool3D((None, 1, 1), method=pool_method),
             *conv_1x1x1_bn(in_planes, hidden_dim, norm=norm),
             HSwish(),
-            *conv_1x1x1_bn(hidden_dim, embd_size, norm=norm),
+            *conv_1x1x1_bn(hidden_dim, 1, norm=norm),
         ]
         self.encoder = nn.Sequential(*layers)
 
@@ -34,13 +32,14 @@ class SimilarityGuidedSampling(nn.Module):
         self.register_buffer('valid_mask', torch.from_numpy(valid_mask))
 
     def forward(self, x, return_extra_data=False):
-        _, c, _, h, w = x.size()
+        _, c, t, h, w = x.size()
 
-        embds = self.encoder(x).squeeze(4).squeeze(3)
+        embds = self.encoder(x).view(-1, t, h * w).transpose(1, 2)
         norm_embd = normalize(embds, dim=1)
 
         with torch.no_grad():
-            neighbour_similarities = torch.sum(norm_embd[:, :, 1:] * norm_embd[:, :, :-1], dim=1)
+            factor = float(h * w) ** (-0.5)
+            neighbour_similarities = torch.sum(factor * norm_embd[:, :, 1:] * norm_embd[:, :, :-1], dim=1)
             break_idx = torch.topk(neighbour_similarities, self.num_bins - 1, dim=1, largest=False)[1]
             breaks = torch.zeros_like(neighbour_similarities, dtype=torch.int32).scatter(1, break_idx, 1)
 
