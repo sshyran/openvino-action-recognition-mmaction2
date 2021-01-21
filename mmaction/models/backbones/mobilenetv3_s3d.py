@@ -197,6 +197,34 @@ class DynamicAttention(nn.Module):
         return out
 
 
+class GlobalContextBlock(nn.Module):
+    def __init__(self, in_channels, internal_factor=3.0, norm='none'):
+        super(GlobalContextBlock, self).__init__()
+
+        self.encoder = conv_1x1x1_bn(in_channels, 1, norm=norm, as_list=False)
+
+        hidden_dim = int(internal_factor * in_channels)
+        layers = [
+            *conv_1x1x1_bn(in_channels, hidden_dim, norm=norm),
+            HSwish(),
+            *conv_1x1x1_bn(hidden_dim, in_channels, norm=norm)
+        ]
+        self.conv = nn.Sequential(*layers)
+
+    def forward(self, x):
+        _, c, t, h, w = x.size()
+
+        keys = self.encoder(x)
+        attention_map = torch.softmax(keys.view(-1, t * h * w, 1), dim=1)
+
+        context = torch.matmul(x.view(-1, c, t * h * w), attention_map)
+
+        y = self.conv(context.view(-1, c, 1, 1, 1))
+        out = x + y
+
+        return out
+
+
 class InvertedResidual_S3D(nn.Module):
     def __init__(self, in_planes, hidden_dim, out_planes, spatial_kernels, temporal_kernels,
                  spatial_stride, temporal_stride, use_se, use_hs,
@@ -292,6 +320,7 @@ class MobileNetV3_S3D(nn.Module):
                  bn_frozen=False,
                  use_temporal_avg_pool=False,
                  use_dw_temporal=0,
+                 use_gcb=0,
                  use_st_att=0,
                  attention_cfg=None,
                  input_bn=False,
@@ -319,6 +348,8 @@ class MobileNetV3_S3D(nn.Module):
             if not isinstance(use_dw_temporal, int) else (use_dw_temporal,) * len(self.cfg)
         self.use_st_att = use_st_att \
             if not isinstance(use_st_att, int) else (use_st_att,) * len(self.cfg)
+        self.use_gcb = use_gcb \
+            if not isinstance(use_gcb, int) else (use_gcb,) * len(self.cfg)
 
         self.bn_eval = bn_eval
         self.bn_frozen = bn_frozen
@@ -348,7 +379,7 @@ class MobileNetV3_S3D(nn.Module):
         residual_block = InvertedResidual_S3D
 
         # building inverted residual blocks
-        self.attentions, self.roi_aligns = nn.ModuleDict(), nn.ModuleDict()
+        self.attentions, self.gcb_modules = nn.ModuleDict(), nn.ModuleDict()
         for layer_id, layer_params in enumerate(self.cfg):
             k, exp_size, c, use_se, use_hs, s = layer_params
             output_channel = make_divisible(c * width_mult, 8)
@@ -366,6 +397,10 @@ class MobileNetV3_S3D(nn.Module):
             if self.use_st_att[layer_id] > 0:
                 att_name = 'st_att_{}'.format(layer_id + num_layers_before)
                 self.attentions[att_name] = attention_block(output_channel, **attention_cfg)
+
+            if self.use_gcb[layer_id] > 0:
+                gcb_name = 'gcb_{}'.format(layer_id + num_layers_before)
+                self.gcb_modules[gcb_name] = GlobalContextBlock(output_channel, norm=weight_norm)
 
             input_channel = output_channel
             self.channels_num.append(output_channel)
@@ -470,6 +505,11 @@ class MobileNetV3_S3D(nn.Module):
                 y = attention_module(y)
             else:
                 y += y  # simulate residual block
+
+        gcb_module_name = 'gcb_{}'.format(module_idx)
+        if gcb_module_name in self.gcb_modules:
+            gcb_module = self.gcb_modules[gcb_module_name]
+            y = gcb_module(y)
 
         return y
 
