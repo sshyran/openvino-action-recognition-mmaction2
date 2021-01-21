@@ -373,20 +373,22 @@ class MobileNetV3_S3D(nn.Module):
         self.features = nn.ModuleList(layers)
 
         if sgs_cfg is not None:
-            assert len(sgs_cfg.idx) > 0
+            assert len(sgs_cfg.idx) >= -1
             assert len(sgs_cfg.idx) == len(sgs_cfg.bins)
 
             self.sgs_modules = nn.ModuleDict()
             self.sgs_idx = []
             for layer_id, num_bins in zip(sgs_cfg.idx, sgs_cfg.bins):
-                sgs_name = 'sgs_{}'.format(layer_id + num_layers_before)
+                sgs_layer_id = layer_id + num_layers_before
+                self.sgs_idx.append(sgs_layer_id)
+
+                sgs_name = 'sgs_{}'.format(sgs_layer_id)
                 self.sgs_modules[sgs_name] = SimilarityGuidedSampling(
-                    self.channels_num[layer_id + num_layers_before],
+                    self.channels_num[sgs_layer_id],
                     num_bins,
                     internal_factor=sgs_cfg.internal_factor,
                     norm=weight_norm
                 )
-                self.sgs_idx.append(layer_id + num_layers_before)
 
             self.enable_sgs_loss = sgs_cfg.get('enable_loss', True)
         else:

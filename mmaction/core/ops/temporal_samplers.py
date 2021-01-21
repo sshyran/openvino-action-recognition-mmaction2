@@ -22,15 +22,15 @@ class SimilarityGuidedSampling(nn.Module):
 
         hidden_dim = int(internal_factor * in_planes)
         layers = [
-            # nn.AvgPool3d(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)),
+            *conv_1x1x1_bn(in_planes, hidden_dim, norm=norm),
+            nn.ReLU(),
+            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)),
+            *conv_1xkxk_bn(hidden_dim, hidden_dim, k=3, groups=hidden_dim, norm=norm),
+            nn.ReLU(),
+            *conv_1x1x1_bn(hidden_dim, 1, norm=norm)
             # *conv_1x1x1_bn(in_planes, hidden_dim, norm=norm),
             # HSwish(),
-            # *conv_1xkxk_bn(hidden_dim, hidden_dim, k=3, groups=hidden_dim, norm=norm),
-            # HSwish(),
             # *conv_1x1x1_bn(hidden_dim, 1, norm=norm)
-            *conv_1x1x1_bn(in_planes, hidden_dim, norm=norm),
-            HSwish(),
-            *conv_1x1x1_bn(hidden_dim, 1, norm=norm)
         ]
         self.encoder = nn.Sequential(*layers)
 
@@ -54,6 +54,14 @@ class SimilarityGuidedSampling(nn.Module):
             group_ids = torch.arange(self.num_bins, dtype=groups.dtype, device=groups.device)
             group_mask = (groups.unsqueeze(2).repeat(1, 1, self.num_bins) == group_ids.view(1, 1, -1)).float()
             group_sizes = torch.sum(group_mask, dim=1, keepdim=True)
+
+            # import matplotlib.pyplot as plt
+            # maps = norm_embd.transpose(1, 2).view(-1, enc_t, enc_h, enc_w)[0].cpu().numpy()
+            # _, axs = plt.subplots(4, 4)
+            # for ii in range(4):
+            #     for jj in range(4):
+            #         axs[ii, jj].imshow(maps[ii * 4 + jj])
+            # plt.show()
 
         centers_sum = torch.sum(norm_embd.unsqueeze(3) * group_mask.unsqueeze(1), dim=2, keepdim=True)
         norm_centers = normalize(centers_sum / group_sizes.unsqueeze(1), dim=1)
