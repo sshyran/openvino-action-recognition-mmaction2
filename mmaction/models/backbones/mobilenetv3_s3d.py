@@ -384,7 +384,6 @@ class MobileNetV3_S3D(nn.Module):
                     self.channels_num[layer_id + num_layers_before],
                     num_bins,
                     internal_factor=sgs_cfg.internal_factor,
-                    embd_size=sgs_cfg.embd_size,
                     norm=weight_norm
                 )
                 self.sgs_idx.append(layer_id + num_layers_before)
