@@ -7,15 +7,11 @@ from torch.nn import Parameter
 from .math import normalize
 
 
-def entropy(p, dim=-1, keepdim=False):
-    return -torch.where(p > 0.0, p * p.log(), torch.zeros_like(p)).sum(dim=dim, keepdim=keepdim)
-
-
 class AngleMultipleLinear(nn.Module):
     """Based on SoftTriplet loss: https://arxiv.org/pdf/1909.05235.pdf
     """
 
-    def __init__(self, in_features, num_classes, num_centers, scale=10.0, reg_weight=0.2, reg_threshold=0.2):
+    def __init__(self, in_features, num_classes, num_centers=1, scale=10.0, reg_weight=0.2, reg_threshold=0.2):
         super(AngleMultipleLinear, self).__init__()
 
         self.in_features = in_features

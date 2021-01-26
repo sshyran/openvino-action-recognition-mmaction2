@@ -7,7 +7,7 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear
+from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier
 
 
 @HEADS.register_module()
@@ -18,6 +18,7 @@ class ClsHead(BaseHead):
                  spatial_size=7,
                  init_std=0.01,
                  embedding=False,
+                 classification_layer='linear',
                  embd_size=128,
                  num_centers=1,
                  st_scale=5.0,
@@ -49,9 +50,15 @@ class ClsHead(BaseHead):
             if self.in_channels != self.embd_size:
                 self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
 
-            self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes,
-                                                  num_centers, st_scale,
-                                                  reg_weight, reg_threshold)
+            if classification_layer == 'linear':
+                self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
+                                                      st_scale, reg_weight, reg_threshold)
+            elif classification_layer == 'kernel':
+                assert not enable_class_mixing, 'Kernelized classifier does not support class mixing'
+
+                self.fc_angular = KernelizedClassifier(self.embd_size, self.num_classes, num_centers)
+            else:
+                raise ValueError(f'Unknown classification layer: {classification_layer}')
         else:
             self.fc_cls_out = nn.Linear(self.in_channels, self.num_classes)
 
@@ -178,7 +185,7 @@ class ClsHead(BaseHead):
                 losses[extra_loss_name.replace('_', '/') + name] = extra_loss(
                     norm_embd, cls_score, labels)
 
-        if self.with_embedding:
+        if self.with_embedding and hasattr(self.fc_angular, 'loss'):
             losses.update(self.fc_angular.loss(name))
 
         return losses
