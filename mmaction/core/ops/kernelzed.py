@@ -5,8 +5,8 @@ from torch.nn import Parameter
 from .math import normalize
 
 
-def kernel_prod(norm_x, norm_weights, alpha, eps=1e-6):
-    scores = norm_x.mm(norm_weights)
+def kernel_prod(norm_x, norm_y, alpha, eps=1e-6):
+    scores = norm_x.mm(norm_y)
 
     num_components = alpha.size(0)
     components = [alpha[i] * torch.pow(scores.unsqueeze(1), i)
@@ -51,7 +51,7 @@ class KernelizedClassifier(nn.Module):
     def forward(self, normalized_x):
         normalized_x = normalized_x.view(-1, self.features_dim)
         normalized_weights = normalize(self.weight, dim=0)
-        normalized_alpha = torch.softmax(self.alpha, dim=0)
+        normalized_alpha = torch.sigmoid(self.alpha)
 
         scores = kernel_prod(normalized_x, normalized_weights, normalized_alpha, self.eps)
 

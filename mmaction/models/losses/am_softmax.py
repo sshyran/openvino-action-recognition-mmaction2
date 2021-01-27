@@ -18,9 +18,9 @@ class AMSoftmaxLoss(BaseMetricLearningLoss):
 
         assert margin_type in AMSoftmaxLoss.margin_types
         self.margin_type = margin_type
-        assert gamma >= 0
+        assert gamma >= 0.0
         self.gamma = gamma
-        assert margin > 0
+        assert margin >= 0.0
         self.m = margin
         self.cos_m = np.cos(self.m)
         self.sin_m = np.sin(self.m)
