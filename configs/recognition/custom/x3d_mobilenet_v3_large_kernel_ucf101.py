@@ -55,7 +55,7 @@ model = dict(
             target_loss='ce',
             scale_cfg=dict(
                 type='ConstantScalarScheduler',
-                scale=50.0,
+                scale=20.0,
             ),
             pr_product=False,
             margin_type='cos',
