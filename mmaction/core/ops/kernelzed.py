@@ -46,12 +46,15 @@ class KernelizedClassifier(nn.Module):
 
     def _init_weights(self):
         self.weight.data.normal_().renorm_(2, 1, 1e-5).mul_(1e5)
-        self.alpha.data.zero_()
+        self.alpha.data.fill_(5.0)
 
     def forward(self, normalized_x):
         normalized_x = normalized_x.view(-1, self.features_dim)
         normalized_weights = normalize(self.weight, dim=0)
         normalized_alpha = torch.sigmoid(self.alpha)
+        # print(self.alpha)
+        # print(normalized_alpha)
+        # exit()
 
         scores = kernel_prod(normalized_x, normalized_weights, normalized_alpha, self.eps)
 
