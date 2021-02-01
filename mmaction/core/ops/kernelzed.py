@@ -5,28 +5,32 @@ from torch.nn import Parameter
 from .math import normalize
 
 
-def kernel_prod(norm_x, norm_y, alpha, eps=1e-6):
+def kernel_prod(norm_x, norm_y, alpha, use_end_components=True, eps=1e-6):
     scores = norm_x.mm(norm_y)
 
-    num_components = alpha.size(0)
-    components = [alpha[i] * torch.pow(scores.unsqueeze(1), i)
-                  for i in range(1, num_components - 2)]
+    num_main_components = alpha.size(0) - (2 if use_end_components else 0)
+    main_components = [torch.pow(scores.unsqueeze(1), i) for i in range(num_main_components)]
 
-    with torch.no_grad():
-        high_mask = (scores > 1.0 - eps).float()
-        low_mask = (scores < -1.0 + eps).float()
+    if use_end_components:
+        with torch.no_grad():
+            high_mask = (scores > 1.0 - eps).float()
+            low_mask = (scores < -1.0 + eps).float()
 
-    odd_component = alpha[-2] * (high_mask - low_mask)
-    even_component = alpha[-1] * (high_mask + low_mask)
+        odd_component = high_mask - low_mask
+        even_component = high_mask + low_mask
 
-    main_components = components + [odd_component.unsqueeze(1), even_component.unsqueeze(1)]
-    main_component = torch.cat(main_components, dim=1).sum(dim=1)
+        all_components = main_components + [odd_component.unsqueeze(1), even_component.unsqueeze(1)]
+    else:
+        all_components = main_components
 
-    return alpha[0] + main_component
+    all_components = torch.cat(all_components, dim=1)
+    out = torch.sum(alpha.view(1, -1, 1) * all_components, dim=1)
+
+    return out
 
 
 class KernelizedClassifier(nn.Module):
-    def __init__(self, features_dim, num_classes, num_centers=1, num_components=8, eps=1e-6):
+    def __init__(self, features_dim, num_classes, num_centers=1, num_components=5, eps=1e-6):
         super(KernelizedClassifier, self).__init__()
 
         assert num_centers == 1
@@ -46,16 +50,15 @@ class KernelizedClassifier(nn.Module):
 
     def _init_weights(self):
         self.weight.data.normal_().renorm_(2, 1, 1e-5).mul_(1e5)
-        self.alpha.data.fill_(5.0)
+        self.alpha.data.fill_(1.0)
 
     def forward(self, normalized_x):
         normalized_x = normalized_x.view(-1, self.features_dim)
         normalized_weights = normalize(self.weight, dim=0)
         normalized_alpha = torch.sigmoid(self.alpha)
-        # print(self.alpha)
-        # print(normalized_alpha)
+        # print(self.alpha.detach().cpu().numpy(), normalized_alpha.detach().cpu().numpy())
         # exit()
 
-        scores = kernel_prod(normalized_x, normalized_weights, normalized_alpha, self.eps)
+        scores = kernel_prod(normalized_x, normalized_weights, normalized_alpha, eps=self.eps)
 
         return scores
