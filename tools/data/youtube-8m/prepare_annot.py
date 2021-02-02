@@ -1,4 +1,5 @@
 import json
+import random
 from argparse import ArgumentParser
 from collections import defaultdict
 from os import makedirs, listdir
@@ -63,6 +64,57 @@ def validate_videos(records, videos_dir, extension):
     return out_records
 
 
+def split_train_val_subsets(records, test_ratio=0.1):
+    assert 0.0 < test_ratio < 1.0
+
+    by_labels = defaultdict(list)
+    for video_name, content in records.items():
+        by_labels[content['label']].append(video_name)
+
+    clustered_segments = dict()
+    for label, segments in by_labels.items():
+        videos = defaultdict(list)
+        for segment in segments:
+            video, _ = segment.split('_segment')
+            videos[video].append(segment)
+
+        clustered_segments[label] = videos
+
+    out_records = dict()
+    for label, videos in clustered_segments.items():
+        num_records = len(by_labels[label])
+        assert num_records > 1
+
+        video_names = list(videos.keys())
+        num_videos = len(video_names)
+        assert num_videos > 1
+
+        num_test_samples = min(num_records - 1, max(1, int(num_records * test_ratio)))
+        num_test_videos = min(num_videos - 1, max(1, int(num_videos * test_ratio)))
+
+        num_selected_test_samples = 0
+        test_videos = []
+        for test_video_name in random.sample(video_names, num_test_videos):
+            test_videos.append(test_video_name)
+            segments = videos[test_video_name]
+
+            for segment in segments:
+                out_records[segment] = dict(label=label, data_type='val')
+
+            num_selected_test_samples += len(segments)
+            if num_selected_test_samples >= num_test_samples:
+                break
+
+        train_videos = list(set(video_names) - set(test_videos))
+        for train_video_name in train_videos:
+            segments = videos[train_video_name]
+
+            for segment in segments:
+                out_records[segment] = dict(label=label, data_type='train')
+
+    return out_records
+
+
 def build_classmap(records):
     labels = set(record['label'] for record in records.values())
     return {class_name: i for i, class_name in enumerate(sorted(labels))}
@@ -77,7 +129,7 @@ def convert_annot(records, classmap, extension):
     return out_records
 
 
-def split_by_type(annotation):
+def group_by_type(annotation):
     out_data = defaultdict(list)
     for video_name, (label_id, data_type) in annotation.items():
         out_data[data_type].append((video_name, label_id))
@@ -102,6 +154,7 @@ def main():
     parser.add_argument('--videos_dir', '-v', type=str, required=True)
     parser.add_argument('--output_dir', '-o', type=str, required=True)
     parser.add_argument('--extension', '-e', type=str, required=False, default='avi')
+    parser.add_argument('--test_ratio', '-r', type=float, required=False, default=0.1)
     args = parser.parse_args()
 
     ensure_dir_exists(args.output_dir)
@@ -123,8 +176,10 @@ def main():
     records = validate_videos(records, args.videos_dir, args.extension)
     print(f'Validated {len(records)} videos.')
 
+    records = split_train_val_subsets(records, args.test_ratio)
+
     annot = convert_annot(records, classmap, args.extension)
-    split_annot = split_by_type(annot)
+    split_annot = group_by_type(annot)
 
     for data_type, records in split_annot.items():
         out_annot_path = join(args.output_dir, f'{data_type}.txt')
