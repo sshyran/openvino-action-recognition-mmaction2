@@ -1,10 +1,8 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'youtube-8m-segments',
-test_sources = 'youtube-8m-segments',
-# train_sources = 'kinetics700',
-# test_sources = 'kinetics700',
+train_sources = 'kinetics700', 'youtube-8m-segments'
+test_sources = 'kinetics700', 'youtube-8m-segments'
 
 root_dir = 'data'
 work_dir = None
