@@ -1,5 +1,6 @@
+import re
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import torch
 import torch.distributed as dist
@@ -8,7 +9,7 @@ import torch.nn.functional as F
 from mmcv.runner import auto_fp16
 
 from .. import builder
-from ...core.ops import rsc, NormRegularizer
+from ...core.ops import rsc, NormRegularizer, balance_losses
 
 
 class EvalModeSetter:
@@ -73,6 +74,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.multi_head = class_sizes is not None and len(class_sizes) > 1
         self.with_self_challenging = hasattr(train_cfg, 'self_challenging') and train_cfg.self_challenging.enable
         self.with_clip_mixing = hasattr(train_cfg, 'clip_mixing') and train_cfg.clip_mixing.enable
+        self.with_loss_norm = hasattr(train_cfg, 'loss_norm') and train_cfg.loss_norm.enable
 
         self.backbone = builder.build_backbone(backbone)
         self.spatial_temporal_module = builder.build_reducer(reducer)
@@ -84,6 +86,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                 mode=train_cfg.clip_mixing.mode,
                 loss_weight=train_cfg.clip_mixing.weight
             ))
+
+        self.losses_meta = None
+        if self.with_loss_norm:
+            assert 0.0 < train_cfg.loss_norm.gamma <= 1.0
+
+            self.losses_meta = dict()
 
         self.regularizer = NormRegularizer(**reg_cfg) if reg_cfg is not None else None
 
@@ -275,7 +283,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             # clip mixing loss
             if self.with_clip_mixing:
-                losses['loss/clip_mix'] = self.clip_mixing_loss(
+                losses['loss/clip_mix' + str(head_id)] = self.clip_mixing_loss(
                     trg_scores, trg_norm_embd, num_clips, cl_head.last_scale
                 )
 
@@ -344,7 +352,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             return self.forward_test(imgs, dataset_id)
 
     @staticmethod
-    def _parse_losses(losses, multi_head):
+    def _parse_losses(losses, multi_head, enable_loss_norm=False, losses_meta=None, gamma=0.9):
         """Parse the raw outputs (losses) of the network.
 
         Args:
@@ -367,7 +375,28 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             else:
                 raise TypeError(f'{loss_name} is not a tensor or list of tensors')
 
-        loss = sum(_value for _key, _value in log_vars.items() if 'loss' in _key)
+        if enable_loss_norm and losses_meta is not None:
+            loss_groups = defaultdict(list)
+            single_losses = list()
+            for _key, _value in log_vars.items():
+                if 'loss' not in _key:
+                    continue
+
+                end_digits_match = re.search(r'\d+$', _key)
+                if end_digits_match is None:
+                    single_losses.append(_value)
+                else:
+                    end_digits = end_digits_match.group()
+                    loss_group_name = _key[:-len(end_digits)]
+                    loss_groups[loss_group_name].append((_key, _value))
+
+            group_losses = []
+            for loss_group in loss_groups.values():
+                group_losses.extend(balance_losses(loss_group, losses_meta, gamma))
+
+            loss = sum(single_losses + group_losses)
+        else:
+            loss = sum(_value for _key, _value in log_vars.items() if 'loss' in _key)
 
         log_vars['loss'] = loss
         for loss_name, loss_value in log_vars.items():
@@ -411,8 +440,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """
 
         losses = self(**data_batch)
-
-        loss, log_vars = self._parse_losses(losses, self.multi_head)
+        loss, log_vars = self._parse_losses(
+            losses, self.multi_head, self.with_loss_norm,
+            self.losses_meta, self.train_cfg.loss_norm.gamma
+        )
 
         outputs = dict(
             loss=loss,
@@ -430,7 +461,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         """
 
         losses = self(**data_batch)
-        loss, log_vars = self._parse_losses(losses, self.multi_head)
+        loss, log_vars = self._parse_losses(
+            losses, self.multi_head, self.with_loss_norm,
+            self.losses_meta, self.train_cfg.loss_norm.gamma
+        )
 
         outputs = dict(
             loss=loss,
