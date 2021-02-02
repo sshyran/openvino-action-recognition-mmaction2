@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from ...core.ops import HSwish, conv_1x1x1_bn
@@ -5,13 +6,35 @@ from ..registry import BACKBONES
 from .mobilenetv3_s3d import MobileNetV3_S3D
 
 
+class ContextPool3d(nn.Module):
+    def __init__(self, in_channels):
+        super(ContextPool3d, self).__init__()
+
+        self.encoder = conv_1x1x1_bn(in_channels, 1, as_list=False)
+
+    def forward(self, x):
+        _, c, t, h, w = x.size()
+
+        keys = self.encoder(x)
+        attention_map = torch.softmax(keys.view(-1, t * h * w, 1), dim=1)
+
+        context = torch.matmul(x.view(-1, c, t * h * w), attention_map)
+        out = context.view(-1, c, 1, 1, 1)
+
+        return out
+
+
 class PoolingBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, factor=3, norm='none'):
+    modes = ['average', 'attention']
+
+    def __init__(self, in_planes, out_planes, factor=3, norm='none', mode='average'):
         super(PoolingBlock, self).__init__()
+
+        assert mode in self.modes
 
         hidden_dim = int(factor * in_planes)
         layers = [
-            nn.AdaptiveAvgPool3d((1, 1, 1)),
+            nn.AdaptiveAvgPool3d((1, 1, 1)) if mode == 'average' else ContextPool3d(in_planes),
             *conv_1x1x1_bn(in_planes, hidden_dim, norm=norm),
             HSwish(),
             *conv_1x1x1_bn(hidden_dim, out_planes, norm=norm),
@@ -71,7 +94,7 @@ class GlobBlock(nn.Module):
 
 @BACKBONES.register_module()
 class MobileNetV3_LGD(MobileNetV3_S3D):
-    def __init__(self, mix_paths, channel_factor=3, **kwargs):
+    def __init__(self, mix_paths, pool_method='average', channel_factor=3, **kwargs):
         super(MobileNetV3_LGD, self).__init__(**kwargs)
 
         assert len(mix_paths) == len(self.cfg)
@@ -87,21 +110,22 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
         self.glob_channels_num = [self.channels_num[idx] for idx in self.local_to_glob_idx]
         self.channel_factor = channel_factor
 
-        # self.lgd_upsample = nn.ModuleDict({
-        #     f'upsample_{idx}': UpsampleBlock(
-        #         glob_channels,
-        #         self.channels_num[idx],
-        #         factor=self.channel_factor,
-        #         norm=self.weight_norm
-        #     )
-        #     for idx, glob_channels in zip(self.glob_to_local_idx, self.glob_channels_num)
-        # })
+        self.lgd_upsample = nn.ModuleDict({
+            f'upsample_{idx}': UpsampleBlock(
+                glob_channels,
+                self.channels_num[idx],
+                factor=self.channel_factor,
+                norm=self.weight_norm
+            )
+            for idx, glob_channels in zip(self.glob_to_local_idx, self.glob_channels_num)
+        })
         self.lgd_pool = nn.ModuleDict({
             f'pooling_{idx}': PoolingBlock(
                 self.channels_num[idx],
                 self.channels_num[idx],
                 factor=self.channel_factor,
-                norm=self.weight_norm
+                norm=self.weight_norm,
+                mode=pool_method
             )
             for idx in self.local_to_glob_idx
         })
@@ -138,11 +162,11 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                 else:
                     local_y = sgs_module(local_y)
 
-            # if module_idx in self.glob_to_local_idx:
-            #     assert glob_y is not None
-            #
-            #     upsample_module = self.lgd_upsample[f'upsample_{module_idx}']
-            #     local_y = upsample_module(glob_y) + local_y
+            if module_idx in self.glob_to_local_idx:
+                assert glob_y is not None
+
+                upsample_module = self.lgd_upsample[f'upsample_{module_idx}']
+                local_y = upsample_module(glob_y) + local_y
 
             if module_idx in self.local_to_glob_idx:
                 pooling_module = self.lgd_pool[f'pooling_{module_idx}']
@@ -155,9 +179,7 @@ class MobileNetV3_LGD(MobileNetV3_S3D):
                     glob_y = pooled_local_y
 
             if module_idx in self.out_ids:
-                # local_outs.append(local_y)
-                # local_outs.append(glob_y)
-                local_outs.append(local_y + glob_y)
+                local_outs.append(local_y)
 
         local_outs = self._out_conv(local_outs, return_extra_data, enable_extra_modules, att_data)
 

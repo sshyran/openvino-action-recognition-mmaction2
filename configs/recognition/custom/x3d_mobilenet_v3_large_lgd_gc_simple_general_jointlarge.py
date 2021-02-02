@@ -1,8 +1,10 @@
 # global parameters
 num_videos_per_gpu = 12
 num_workers_per_gpu = 3
-train_sources = 'kinetics700',
-test_sources = 'kinetics700',
+train_sources = 'youtube-8m-segments',
+test_sources = 'youtube-8m-segments',
+# train_sources = 'kinetics700',
+# test_sources = 'kinetics700',
 
 root_dir = 'data'
 work_dir = None
@@ -19,7 +21,7 @@ frame_interval = 2
 model = dict(
     type='Recognizer3D',
     backbone=dict(
-        type='MobileNetV3_S3D',
+        type='MobileNetV3_LGD',
         num_input_layers=3,
         mode='large',
         pretrained=None,
@@ -28,16 +30,14 @@ model = dict(
         pool1_stride_t=1,
         # block ids       0  1  2  3  4  5  6  7  8  9  10 11 12 13 14
         # spatial strides 1  2  1  2  1  1  2  1  1  1  1  1  1  2  1
-        temporal_strides=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
-        temporal_kernels=(1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3),
+        temporal_strides=(1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1),
+        temporal_kernels=(5, 3, 3, 3, 3, 5, 5, 3, 3, 5, 3, 3, 3, 3, 3),
         use_dw_temporal= (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        mix_paths=       (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        pool_method='attention',
+        channel_factor=3,
         use_temporal_avg_pool=True,
         out_conv=True,
-        sgs_cfg=dict(
-            idx=[1],
-            bins=[8],
-            internal_factor=3.0,
-        )
     ),
     reducer=dict(
         type='AggregatorSpatialTemporalModule',
@@ -141,7 +141,7 @@ data = dict(
     ),
     test=dict(
         source=test_sources,
-        ann_file='test.txt',
+        ann_file='val.txt',
         pipeline=val_pipeline
     )
 )
@@ -149,7 +149,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=4.5e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -170,13 +170,13 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customstep',
-    step=[50, 100],
+    step=[50, 70, 90],
     gamma=0.1,
     warmup='cos',
     warmup_epochs=10,
-    warmup_ratio=1e-3,
+    warmup_ratio=2.3e-3,
 )
-total_epochs = 150
+total_epochs = 110
 
 # workflow
 workflow = [('train', 1)]
@@ -191,7 +191,7 @@ evaluation = dict(
 
 log_level = 'INFO'
 log_config = dict(
-    interval=100,
+    interval=10,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook'),

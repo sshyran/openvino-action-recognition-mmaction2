@@ -17,6 +17,12 @@ def inflate_weights(model, state_dict_2d, logger=None):
             state_dict_2d = state_dict_2d['state_dict']
     assert isinstance(state_dict_2d, dict)
 
+    first_element = list(state_dict_2d.keys())[0]
+    if first_element.startswith('module.'):
+        state_dict_2d = {k[7:]: v for k, v in state_dict_2d.items()}
+    elif first_element.startswith('backbone.'):
+        state_dict_2d = {k[9:]: v for k, v in state_dict_2d.items()}
+
     missing_keys = []
     shape_mismatch_pairs = []
     shape_inflated_pairs = []
