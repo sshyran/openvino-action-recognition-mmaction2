@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,6 +20,8 @@ class ClsHead(BaseHead):
                  spatial_size=7,
                  init_std=0.01,
                  embedding=False,
+                 enable_rebalance=False,
+                 rebalance_size=3,
                  classification_layer='linear',
                  embd_size=128,
                  num_centers=1,
@@ -45,9 +49,22 @@ class ClsHead(BaseHead):
             self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
 
         self.with_embedding = embedding and self.embd_size > 0
+        self.enable_rebalance = self.with_embedding and enable_rebalance and rebalance_size > 1
         if self.with_embedding:
-            self.fc_pre_angular = None
-            if self.in_channels != self.embd_size:
+            if self.enable_rebalance:
+                assert not enable_sampling, 'Re-balancing does not support embd sampling'
+                assert not enable_class_mixing, 'Re-balancing does not support embd mixing'
+                assert classification_layer == 'linear', 'Re-balancing supports linear head only'
+                assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
+
+                rebalance_zero_mask = self.build_rebalance_masks(self.class_sizes, rebalance_size)
+                self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
+
+                self.fc_pre_angular = nn.ModuleList([
+                    conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                    for _ in range(rebalance_size)
+                ])
+            else:
                 self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
 
             if classification_layer == 'linear':
@@ -95,6 +112,43 @@ class ClsHead(BaseHead):
         else:
             nn.init.normal_(self.fc_cls_out.weight, 0, self.init_std)
             nn.init.constant_(self.fc_cls_out.bias, 0)
+
+    @staticmethod
+    def build_rebalance_masks(class_sizes, num_groups):
+        assert 1 < num_groups <= 3
+        assert len(class_sizes) >= num_groups
+        num_borders = num_groups - 1
+
+        ordered_class_sizes = list(sorted(class_sizes.items(), key=lambda tup: -tup[1]))
+        class_ids = np.array([class_id for class_id, _ in ordered_class_sizes], dtype=np.int32)
+        class_sizes = np.array([class_size for _, class_size in ordered_class_sizes], dtype=np.float32)
+        num_classes = len(ordered_class_sizes)
+        assert ordered_class_sizes[-1][0] == num_classes - 1
+
+        all_border_combinations = itertools.combinations(range(1, num_classes), num_borders)
+        all_border_combinations = np.array(all_border_combinations)
+
+        ratios = [class_sizes[0] / class_sizes[all_border_combinations[:, 0] - 1]]
+        for ii in range(num_borders - 1):
+            starts = all_border_combinations[:, ii]
+            ends = all_border_combinations[:, ii + 1] - 1
+            ratios.append(class_sizes[starts] / class_sizes[ends])
+        ratios.append(class_sizes[all_border_combinations[:, -1]] / class_sizes[-1])
+
+        ratios = np.stack(ratios, axis=1)
+        cost = np.max(ratios, axis=1) - np.min(ratios, axis=1)
+        best_border_combination = all_border_combinations[np.argmin(cost)]
+
+        groups = [class_ids[:best_border_combination[0]]]
+        for ii in range(num_borders - 1):
+            groups.append(class_ids[best_border_combination[ii]:best_border_combination[ii + 1]])
+        groups.append(class_ids[best_border_combination[-1]:])
+
+        mask = np.zeros([num_groups, num_classes], dtype=np.float32)
+        for group_id, group in enumerate(groups):
+            mask[group_id, group] = 1.0
+
+        return mask.reshape([1, num_groups, num_classes])
 
     def _squash_features(self, x):
         if x.ndimension() == 4:
@@ -148,42 +202,54 @@ class ClsHead(BaseHead):
             x = self.dropout(x)
 
         if self.with_embedding:
-            unnorm_embd = self.fc_pre_angular(x) if self.fc_pre_angular is not None else x
-            norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
+            if self.enable_rebalance:
+                unnorm_embd = [module(x) for module in self.fc_pre_angular]
+                norm_embd = [normalize(embd.view(-1, self.embd_size), dim=1) for embd in unnorm_embd]
+                split_scores = [self.fc_angular(embd) for embd in norm_embd]
 
-            if self.training:
-                if self.enable_class_mixing:
-                    norm_class_centers = normalize(self.fc_angular.weight.permute(1, 0), dim=1)
-                    norm_embd = self._mix_embd(
-                        norm_embd, labels, norm_class_centers, self.num_classes, self.alpha_class_mixing
-                    )
+                all_scores = torch.cat([score.unsqueeze(1) for score in split_scores], dim=1)
+                main_cls_score = torch.sum(all_scores * self.rebalance_zero_mask, dim=1)
 
-                if self.enable_sampling:
-                    norm_embd = self._sample_embd(
-                        norm_embd, labels, x.shape[0], self.adaptive_sampling, self.sampling_angle_std
-                    )
+                extra_cls_score = split_scores
+            else:
+                unnorm_embd = self.fc_pre_angular(x)
+                norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
 
-            cls_score = self.fc_angular(norm_embd)
+                if self.training:
+                    if self.enable_class_mixing:
+                        norm_class_centers = normalize(self.fc_angular.weight.permute(1, 0), dim=1)
+                        norm_embd = self._mix_embd(
+                            norm_embd, labels, norm_class_centers, self.num_classes, self.alpha_class_mixing
+                        )
+
+                    if self.enable_sampling:
+                        norm_embd = self._sample_embd(
+                            norm_embd, labels, x.shape[0], self.adaptive_sampling, self.sampling_angle_std
+                        )
+
+                main_cls_score = self.fc_angular(norm_embd)
+                extra_cls_score = None
         else:
             norm_embd = None
-            cls_score = self.fc_cls_out(x.view(-1, self.in_channels))
+            extra_cls_score = None
+            main_cls_score = self.fc_cls_out(x.view(-1, self.in_channels))
 
         if return_extra_data:
-            return cls_score, norm_embd
+            return main_cls_score, norm_embd, extra_cls_score
         else:
-            return cls_score
+            return main_cls_score
 
-    def loss(self, cls_score, labels, norm_embd, name, **kwargs):
+    def loss(self, main_cls_score, labels, norm_embd, name, extra_cls_score, **kwargs):
         losses = dict()
 
-        losses['loss/cls' + name] = self.head_loss(cls_score, labels)
+        losses['loss/cls' + name] = self.head_loss(main_cls_score, labels)
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
-        if self.losses_extra is not None:
+        if self.losses_extra is not None and not self.enable_rebalance:
             for extra_loss_name, extra_loss in self.losses_extra.items():
                 losses[extra_loss_name.replace('_', '/') + name] = extra_loss(
-                    norm_embd, cls_score, labels)
+                    norm_embd, main_cls_score, labels)
 
         if self.with_embedding and hasattr(self.fc_angular, 'loss'):
             losses.update(self.fc_angular.loss(name))

@@ -197,10 +197,10 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         out = head_module(*args, **kwargs)
 
         if isinstance(out, (tuple, list)):
-            assert len(out) == 2
+            assert len(out) == 3
             return out
         else:
-            return out, None
+            return out, None, None
 
     @staticmethod
     def _filter(x, mask):
@@ -208,6 +208,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             return None
         elif mask is None:
             return x
+        elif isinstance(x, (tuple, list)):
+            return [_x[mask] for _x in x]
         else:
             return x[mask]
 
@@ -243,7 +245,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             if self.with_self_challenging:
                 trg_features = self._filter(features, trg_mask)
-                trg_scores, _ = self._infer_head(
+                trg_main_scores, _ = self._infer_head(
                     cl_head,
                     *([trg_features] + head_args),
                     labels=trg_labels.view(-1)
@@ -251,31 +253,33 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
                 trg_features = rsc(
                     trg_features,
-                    trg_scores,
+                    trg_main_scores,
                     trg_labels, 1.0 - self.train_cfg.self_challenging.drop_p
                 )
 
                 with EvalModeSetter(cl_head, m_type=(nn.BatchNorm2d, nn.BatchNorm3d)):
-                    trg_scores, trg_norm_embd = self._infer_head(
+                    trg_main_scores, trg_norm_embd, trg_extra_scores = self._infer_head(
                         cl_head,
                         *([trg_features] + head_args),
                         labels=trg_labels.view(-1),
                         return_extra_data=True
                     )
             else:
-                all_scores, all_norm_embd = self._infer_head(
+                all_main_scores, all_norm_embd, all_extra_scores = self._infer_head(
                     cl_head,
                     *([features] + head_args),
                     labels=labels.view(-1),
                     return_extra_data=True
                 )
 
-                trg_scores = self._filter(all_scores, trg_mask)
+                trg_main_scores = self._filter(all_main_scores, trg_mask)
+                trg_extra_scores = self._filter(all_extra_scores, trg_mask)
                 trg_norm_embd = self._filter(all_norm_embd, trg_mask)
 
             # main head loss
             losses.update(cl_head.loss(
-                cls_score=trg_scores,
+                main_cls_score=trg_main_scores,
+                extra_cls_score=trg_extra_scores,
                 labels=trg_labels.view(-1),
                 norm_embd=trg_norm_embd,
                 name=str(head_id)
@@ -284,7 +288,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
             # clip mixing loss
             if self.with_clip_mixing:
                 losses['loss/clip_mix' + str(head_id)] = self.clip_mixing_loss(
-                    trg_scores, trg_norm_embd, num_clips, cl_head.last_scale
+                    trg_main_scores, trg_norm_embd, num_clips, cl_head.last_scale
                 )
 
         if self.regularizer is not None:
