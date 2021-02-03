@@ -254,14 +254,17 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         for dataset_id, labels in datasets.items():
             dataset_name = self.dataset_ids_map[dataset_id]
             dataset_num_labels = len(labels)
-            dataset_num_items = sum(labels.values())
 
-            data_info.append([dataset_name, dataset_num_labels, dataset_num_items])
+            class_sizes = list(labels.values())
+            dataset_num_items = sum(class_sizes)
+            dataset_imbalance_info = '{:.2f}'.format(max(class_sizes) / min(class_sizes))
+
+            data_info.append([dataset_name, dataset_num_labels, dataset_num_items, dataset_imbalance_info])
             total_num_labels += dataset_num_labels
             total_num_items += dataset_num_items
-        data_info.append(['total', total_num_labels, total_num_items])
+        data_info.append(['total', total_num_labels, total_num_items, ''])
 
-        header = ['name', '# labels', '# items']
+        header = ['name', '# labels', '# items', 'imbalance']
         table_data = [header] + data_info
         table = AsciiTable(table_data)
         msg = table.table
