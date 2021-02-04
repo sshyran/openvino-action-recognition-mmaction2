@@ -57,7 +57,7 @@ class ClsHead(BaseHead):
                 assert classification_layer == 'linear', 'Re-balancing supports linear head only'
                 assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
 
-                rebalance_zero_mask = self.build_rebalance_masks(self.class_sizes, rebalance_size)
+                rebalance_zero_mask = self._build_rebalance_masks(self.class_sizes, rebalance_size)
                 self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
 
                 self.fc_pre_angular = nn.ModuleList([
@@ -114,19 +114,17 @@ class ClsHead(BaseHead):
             nn.init.constant_(self.fc_cls_out.bias, 0)
 
     @staticmethod
-    def build_rebalance_masks(class_sizes, num_groups):
+    def _build_rebalance_masks(classes_meta, num_groups):
         assert 1 < num_groups <= 3
-        assert len(class_sizes) >= num_groups
+        assert len(classes_meta) >= num_groups
         num_borders = num_groups - 1
 
-        ordered_class_sizes = list(sorted(class_sizes.items(), key=lambda tup: -tup[1]))
+        ordered_class_sizes = list(sorted(classes_meta.items(), key=lambda tup: -tup[1]))
         class_ids = np.array([class_id for class_id, _ in ordered_class_sizes], dtype=np.int32)
         class_sizes = np.array([class_size for _, class_size in ordered_class_sizes], dtype=np.float32)
-        num_classes = len(ordered_class_sizes)
-        assert ordered_class_sizes[-1][0] == num_classes - 1
 
-        all_border_combinations = itertools.combinations(range(1, num_classes), num_borders)
-        all_border_combinations = np.array(all_border_combinations)
+        all_border_combinations = itertools.combinations(range(1, len(ordered_class_sizes)), num_borders)
+        all_border_combinations = np.array(list(all_border_combinations))
 
         ratios = [class_sizes[0] / class_sizes[all_border_combinations[:, 0] - 1]]
         for ii in range(num_borders - 1):
@@ -136,17 +134,19 @@ class ClsHead(BaseHead):
         ratios.append(class_sizes[all_border_combinations[:, -1]] / class_sizes[-1])
 
         ratios = np.stack(ratios, axis=1)
-        cost = np.max(ratios, axis=1) - np.min(ratios, axis=1)
-        best_border_combination = all_border_combinations[np.argmin(cost)]
+        costs = np.max(ratios, axis=1) - np.min(ratios, axis=1)
+        best_border_combination = all_border_combinations[np.argmin(costs)]
 
         groups = [class_ids[:best_border_combination[0]]]
         for ii in range(num_borders - 1):
             groups.append(class_ids[best_border_combination[ii]:best_border_combination[ii + 1]])
         groups.append(class_ids[best_border_combination[-1]:])
 
+        num_classes = max(classes_meta.keys()) + 1
         mask = np.zeros([num_groups, num_classes], dtype=np.float32)
-        for group_id, group in enumerate(groups):
-            mask[group_id, group] = 1.0
+        for group_id in range(num_groups):
+            for ii in range(group_id, num_groups):
+                mask[group_id, groups[ii]] = 1.0
 
         return mask.reshape([1, num_groups, num_classes])
 

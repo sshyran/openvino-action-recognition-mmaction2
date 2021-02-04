@@ -52,10 +52,35 @@ model = dict(
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=False,
+        embedding=True,
+        embd_size=256,
+        enable_rebalance=False,
+        rebalance_size=3,
+        reg_weight=1.0,
+        reg_threshold=0.1,
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            loss_weight=1.0
+            type='AMSoftmaxLoss',
+            target_loss='ce',
+            scale_cfg=dict(
+                type='ConstantScalarScheduler',
+                scale=15.0,
+            ),
+            pr_product=False,
+            margin_type='cos',
+            margin=0.35,
+            gamma=0.0,
+            t=1.0,
+            conf_penalty_weight=0.085,
+            filter_type='positives',
+            top_k=None,
+        ),
+        losses_extra=dict(
+            loss_lpush=dict(
+                type='LocalPushLoss',
+                margin=0.1,
+                weight=1.0,
+                smart_margin=True,
+            ),
         ),
     ),
 )
