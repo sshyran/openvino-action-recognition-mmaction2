@@ -58,7 +58,7 @@ model = dict(
             target_loss='ce',
             scale_cfg=dict(
                 type='ConstantScalarScheduler',
-                scale=10.0,
+                scale=15.0,
             ),
             pr_product=False,
             margin_type='cos',
@@ -167,7 +167,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=4.5e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -192,7 +192,7 @@ lr_config = dict(
     gamma=0.1,
     warmup='cos',
     warmup_epochs=10,
-    warmup_ratio=1e-3,
+    warmup_ratio=2.3e-3,
 )
 total_epochs = 110
 
