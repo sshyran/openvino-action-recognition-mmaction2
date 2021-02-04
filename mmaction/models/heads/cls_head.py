@@ -57,7 +57,11 @@ class ClsHead(BaseHead):
                 assert classification_layer == 'linear', 'Re-balancing supports linear head only'
                 assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
 
-                rebalance_zero_mask = self._build_rebalance_masks(self.class_sizes, rebalance_size)
+                rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
+                    self.class_sizes, rebalance_size
+                )
+                print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
+                      f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
                 self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
 
                 self.fc_pre_angular = nn.ModuleList([
@@ -122,6 +126,7 @@ class ClsHead(BaseHead):
         ordered_class_sizes = list(sorted(classes_meta.items(), key=lambda tup: -tup[1]))
         class_ids = np.array([class_id for class_id, _ in ordered_class_sizes], dtype=np.int32)
         class_sizes = np.array([class_size for _, class_size in ordered_class_sizes], dtype=np.float32)
+        init_imbalance = class_sizes[0] / class_sizes[-1]
 
         all_border_combinations = itertools.combinations(range(1, len(ordered_class_sizes)), num_borders)
         all_border_combinations = np.array(list(all_border_combinations))
@@ -135,7 +140,9 @@ class ClsHead(BaseHead):
 
         ratios = np.stack(ratios, axis=1)
         costs = np.max(ratios, axis=1) - np.min(ratios, axis=1)
-        best_border_combination = all_border_combinations[np.argmin(costs)]
+        best_match_idx = np.argmin(costs)
+        best_border_combination = all_border_combinations[best_match_idx]
+        best_ratios = ratios[best_match_idx]
 
         groups = [class_ids[:best_border_combination[0]]]
         for ii in range(num_borders - 1):
@@ -148,7 +155,7 @@ class ClsHead(BaseHead):
             for ii in range(group_id, num_groups):
                 mask[group_id, groups[ii]] = 1.0
 
-        return mask.reshape([1, num_groups, num_classes])
+        return mask.reshape([1, num_groups, num_classes]), init_imbalance, best_ratios
 
     def _squash_features(self, x):
         if x.ndimension() == 4:

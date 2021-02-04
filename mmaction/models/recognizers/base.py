@@ -445,8 +445,11 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         losses = self(**data_batch)
         loss, log_vars = self._parse_losses(
-            losses, self.multi_head, self.with_loss_norm,
-            self.losses_meta, self.train_cfg.loss_norm.gamma
+            losses,
+            self.multi_head,
+            self.with_loss_norm,
+            self.losses_meta,
+            self.train_cfg.loss_norm.gamma if self.with_loss_norm else 0.9
         )
 
         outputs = dict(
@@ -466,8 +469,11 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         losses = self(**data_batch)
         loss, log_vars = self._parse_losses(
-            losses, self.multi_head, self.with_loss_norm,
-            self.losses_meta, self.train_cfg.loss_norm.gamma
+            losses,
+            self.multi_head,
+            self.with_loss_norm,
+            self.losses_meta,
+            self.train_cfg.loss_norm.gamma if self.with_loss_norm else 0.9
         )
 
         outputs = dict(

@@ -65,7 +65,7 @@ class BaseHead(nn.Module, metaclass=ABCMeta):
         if self.class_sizes is None:
             assert self.num_classes is not None
         else:
-            self.num_classes = max(list(class_sizes.keys())) + 1
+            self.num_classes = max(class_sizes.keys()) + 1
 
         loss_cls = loss_cls if loss_cls is not None else dict(type='CrossEntropyLoss')
         self.head_loss = build_loss(loss_cls, class_sizes=class_sizes)
