@@ -381,7 +381,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
         if enable_loss_norm and losses_meta is not None:
             loss_groups = defaultdict(list)
-            single_losses = list()
+            single_losses = []
             for _key, _value in log_vars.items():
                 if 'loss' not in _key:
                     continue
