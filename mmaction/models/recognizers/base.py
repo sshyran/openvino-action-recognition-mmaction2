@@ -396,10 +396,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             group_losses = []
             for loss_group in loss_groups.values():
-                if len(loss_group) > 1:
-                    group_losses.extend(balance_losses(loss_group, losses_meta, gamma))
-                else:
-                    single_losses.append(loss_group[0][1])
+                group_losses.extend(balance_losses(loss_group, losses_meta, gamma))
 
             loss = sum(single_losses + group_losses)
         else:
