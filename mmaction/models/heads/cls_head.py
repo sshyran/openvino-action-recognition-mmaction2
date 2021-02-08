@@ -253,6 +253,25 @@ class ClsHead(BaseHead):
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
+        if self.enable_rebalance:
+            with torch.no_grad():
+                all_indexed_labels_mask = torch.zeros_like(main_cls_score, dtype=torch.float32)\
+                    .scatter_(1, labels.view(-1, 1), 1)
+                indexed_labels_mask = all_indexed_labels_mask.unsqueeze(1) * self.rebalance_zero_mask
+
+                valid_samples_mask = indexed_labels_mask.sum(dim=2) > 0.0
+
+                group_losses = []
+                for group_id, group_cls_score in enumerate(extra_cls_score):
+                    group_samples_mask = valid_samples_mask[:, group_id]
+                    if group_samples_mask.size(0) == 0:
+                        continue
+
+                    group_labels_mask = indexed_labels_mask[:, group_id]
+
+                    group_labels = group_labels_mask[group_samples_mask]
+                    group_cls_score = group_cls_score[group_samples_mask]
+
         if self.losses_extra is not None and not self.enable_rebalance:
             for extra_loss_name, extra_loss in self.losses_extra.items():
                 losses[extra_loss_name.replace('_', '/') + name] = extra_loss(
