@@ -10,6 +10,11 @@ class BaseScalarScheduler(metaclass=ABCMeta):
         self.iter = start_iter
         assert self.iter >= 0
 
+    def get_scale(self):
+        scale = self._get_scale(self.iter, self.iters_per_epoch)
+
+        return scale
+
     def get_scale_and_increment_step(self):
         scale = self._get_scale(self.iter, self.iters_per_epoch)
         self.iter += 1

@@ -21,7 +21,8 @@ class ClsHead(BaseHead):
                  init_std=0.01,
                  embedding=False,
                  enable_rebalance=False,
-                 rebalance_size=3,
+                 rebalance_num_groups=3,
+                 rebalance_alpha=0.9,
                  classification_layer='linear',
                  embd_size=128,
                  num_centers=1,
@@ -49,7 +50,7 @@ class ClsHead(BaseHead):
             self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
 
         self.with_embedding = embedding and self.embd_size > 0
-        self.enable_rebalance = self.with_embedding and enable_rebalance and rebalance_size > 1
+        self.enable_rebalance = self.with_embedding and enable_rebalance and rebalance_num_groups > 1
         if self.with_embedding:
             if self.enable_rebalance:
                 assert not enable_sampling, 'Re-balancing does not support embd sampling'
@@ -58,15 +59,16 @@ class ClsHead(BaseHead):
                 assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
 
                 rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
-                    self.class_sizes, rebalance_size
+                    self.class_sizes, rebalance_num_groups
                 )
                 print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
                       f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
                 self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
+                self.rebalance_alpha = rebalance_alpha
 
                 self.fc_pre_angular = nn.ModuleList([
                     conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
-                    for _ in range(rebalance_size)
+                    for _ in range(rebalance_num_groups)
                 ])
             else:
                 self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
@@ -249,7 +251,7 @@ class ClsHead(BaseHead):
     def loss(self, main_cls_score, labels, norm_embd, name, extra_cls_score, **kwargs):
         losses = dict()
 
-        losses['loss/cls' + name] = self.head_loss(main_cls_score, labels)
+        main_cls_loss = self.head_loss(main_cls_score, labels)
         if hasattr(self.head_loss, 'last_scale'):
             losses['scale/cls' + name] = self.head_loss.last_scale
 
@@ -276,9 +278,13 @@ class ClsHead(BaseHead):
 
                 group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
 
-                group_losses.append(self.head_loss(group_cls_score, group_targets))
+                group_losses.append(self.head_loss(group_cls_score, group_targets, increment_step=False))
 
-            losses['loss/group' + name] = sum(group_losses) / float(len(group_losses))
+            group_loss = sum(group_losses) / float(len(group_losses))
+            losses['loss/cls' + name] = \
+                (1.0 - self.rebalance_alpha) * main_cls_loss + self.rebalance_alpha * group_loss
+        else:
+            losses['loss/cls' + name] = main_cls_loss
 
         if self.losses_extra is not None and not self.enable_rebalance:
             for extra_loss_name, extra_loss in self.losses_extra.items():

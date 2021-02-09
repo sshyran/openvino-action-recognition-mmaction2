@@ -118,8 +118,11 @@ class BaseMetricLearningLoss(BaseWeightedLoss):
 
         return losses
 
-    def _forward(self, output, labels):
-        self._last_scale = self.scale_scheduler.get_scale_and_increment_step()
+    def _forward(self, output, labels, increment_step=True):
+        if increment_step:
+            self._last_scale = self.scale_scheduler.get_scale_and_increment_step()
+        else:
+            self._last_scale = self.scale_scheduler.get_scale()
 
         if self.with_pr_product:
             output = self._pr_product(output)
