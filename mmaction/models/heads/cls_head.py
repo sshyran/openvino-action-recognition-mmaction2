@@ -261,16 +261,24 @@ class ClsHead(BaseHead):
 
                 valid_samples_mask = indexed_labels_mask.sum(dim=2) > 0.0
 
-                group_losses = []
-                for group_id, group_cls_score in enumerate(extra_cls_score):
+            group_losses = []
+            for group_id, group_cls_score in enumerate(extra_cls_score):
+                with torch.no_grad():
                     group_samples_mask = valid_samples_mask[:, group_id]
-                    if group_samples_mask.size(0) == 0:
+                    if torch.sum(group_samples_mask) == 0:
                         continue
 
                     group_labels_mask = indexed_labels_mask[:, group_id]
+                    group_logits_mask = self.rebalance_zero_mask[:, group_id].view(-1) > 0.0
 
-                    group_labels = group_labels_mask[group_samples_mask]
-                    group_cls_score = group_cls_score[group_samples_mask]
+                    group_labels = group_labels_mask[group_samples_mask][:, group_logits_mask]
+                    group_targets = torch.argmax(group_labels, dim=1)
+
+                group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
+
+                group_losses.append(self.head_loss(group_cls_score, group_targets))
+
+            losses['loss/group' + name] = sum(group_losses) / float(len(group_losses))
 
         if self.losses_extra is not None and not self.enable_rebalance:
             for extra_loss_name, extra_loss in self.losses_extra.items():
