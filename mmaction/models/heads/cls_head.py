@@ -277,7 +277,6 @@ class ClsHead(BaseHead):
                     group_targets = torch.argmax(group_labels, dim=1)
 
                 group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
-
                 group_losses.append(self.head_loss(group_cls_score, group_targets, increment_step=False))
 
             group_loss = sum(group_losses) / float(len(group_losses))
