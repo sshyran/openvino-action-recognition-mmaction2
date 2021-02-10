@@ -58,13 +58,18 @@ class ClsHead(BaseHead):
                 assert classification_layer == 'linear', 'Re-balancing supports linear head only'
                 assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
 
+                self.rebalance_alpha = rebalance_alpha
+                assert 0.0 <= self.rebalance_alpha <= 1.0
                 rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
                     self.class_sizes, rebalance_num_groups
                 )
                 print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
                       f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
                 self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
-                self.rebalance_alpha = rebalance_alpha
+                rebalance_weights = np.where(rebalance_zero_mask > 0.0,
+                                             1.0 / np.sum(rebalance_zero_mask, axis=1, keepdims=True),
+                                             np.zeros_like(rebalance_zero_mask))
+                self.register_buffer('rebalance_weights', torch.from_numpy(rebalance_weights))
 
                 self.fc_pre_angular = nn.ModuleList([
                     conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
@@ -217,7 +222,7 @@ class ClsHead(BaseHead):
                 split_scores = [self.fc_angular(embd) for embd in norm_embd]
 
                 all_scores = torch.cat([score.unsqueeze(1) for score in split_scores], dim=1)
-                main_cls_score = torch.sum(all_scores * self.rebalance_zero_mask, dim=1)
+                main_cls_score = torch.sum(all_scores * self.rebalance_weights, dim=1)
 
                 extra_cls_score = split_scores
             else:
