@@ -9,7 +9,7 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier
+from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier, balance_losses
 
 
 @HEADS.register_module()
@@ -70,6 +70,7 @@ class ClsHead(BaseHead):
                                              1.0 / np.sum(rebalance_zero_mask, axis=1, keepdims=True),
                                              np.zeros_like(rebalance_zero_mask))
                 self.register_buffer('rebalance_weights', torch.from_numpy(rebalance_weights))
+                self.rebalance_losses_meta = dict()
 
                 self.fc_pre_angular = nn.ModuleList([
                     conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
@@ -273,6 +274,7 @@ class ClsHead(BaseHead):
                 with torch.no_grad():
                     group_samples_mask = valid_samples_mask[:, group_id]
                     if torch.sum(group_samples_mask) == 0:
+                        group_losses.append((f'loss/group{group_id}', 0.0))
                         continue
 
                     group_labels_mask = indexed_labels_mask[:, group_id]
@@ -282,11 +284,14 @@ class ClsHead(BaseHead):
                     group_targets = torch.argmax(group_labels, dim=1)
 
                 group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
-                group_losses.append(self.head_loss(group_cls_score, group_targets, increment_step=False))
+                group_loss = self.head_loss(group_cls_score, group_targets, increment_step=False)
 
-            group_loss = sum(group_losses) / float(len(group_losses))
+                group_losses.append((f'loss/group{group_id}', group_loss))
+
+            group_losses = balance_losses(group_losses, self.rebalance_losses_meta, 0.9)
+            fused_group_loss = sum(group_losses) / float(len(group_losses))
             losses['loss/cls' + name] = \
-                (1.0 - self.rebalance_alpha) * main_cls_loss + self.rebalance_alpha * group_loss
+                (1.0 - self.rebalance_alpha) * main_cls_loss + self.rebalance_alpha * fused_group_loss
         else:
             losses['loss/cls' + name] = main_cls_loss
 

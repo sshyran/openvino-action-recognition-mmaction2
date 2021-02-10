@@ -6,10 +6,12 @@ def balance_losses(new_values, meta, gamma=0.9, eps=1e-6):
 
     sum_smoothed_values = 0.0
     for key, new_value in new_values:
+        scalar_new_value = float(new_value) if isinstance(new_value, (int, float)) else float(new_value.item())
+
         if key in meta:
-            smoothed_value = gamma * meta[key] + (1.0 - gamma) * float(new_value.item())
+            smoothed_value = gamma * meta[key] + (1.0 - gamma) * scalar_new_value
         else:
-            smoothed_value = float(new_value.item())
+            smoothed_value = scalar_new_value
 
         meta[key] = smoothed_value
         sum_smoothed_values += smoothed_value
