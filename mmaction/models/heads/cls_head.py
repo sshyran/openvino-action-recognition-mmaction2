@@ -56,11 +56,12 @@ class ClsHead(BaseHead):
 
             self.rebalance_alpha = rebalance_alpha
             assert 0.0 <= self.rebalance_alpha <= 1.0
-            rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
+            rebalance_zero_mask, imbalance_ratios = self._build_rebalance_masks(
                 self.class_sizes, rebalance_num_groups
             )
+            np.set_printoptions(precision=3)
             print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
-                  f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
+                  f'classes : {imbalance_ratios}')
             self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
             rebalance_weights = np.where(rebalance_zero_mask > 0.0,
                                          1.0 / np.sum(rebalance_zero_mask, axis=1, keepdims=True),
@@ -144,7 +145,6 @@ class ClsHead(BaseHead):
         ordered_class_sizes = list(sorted(classes_meta.items(), key=lambda tup: -tup[1]))
         class_ids = np.array([class_id for class_id, _ in ordered_class_sizes], dtype=np.int32)
         class_sizes = np.array([class_size for _, class_size in ordered_class_sizes], dtype=np.float32)
-        init_imbalance = class_sizes[0] / class_sizes[-1]
 
         all_border_combinations = itertools.combinations(range(1, len(ordered_class_sizes)), num_borders)
         all_border_combinations = np.array(list(all_border_combinations))
@@ -173,7 +173,7 @@ class ClsHead(BaseHead):
             for ii in range(group_id, num_groups):
                 mask[group_id, groups[ii]] = 1.0
 
-        return mask.reshape([1, num_groups, num_classes]), init_imbalance, best_ratios
+        return mask.reshape([1, num_groups, num_classes]), best_ratios
 
     def _squash_features(self, x):
         if x.ndimension() == 4:
