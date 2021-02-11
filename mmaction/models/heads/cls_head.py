@@ -9,7 +9,7 @@ from mmcv.cnn import constant_init, kaiming_init
 
 from .base import BaseHead
 from ..registry import HEADS
-from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier, balance_losses
+from ...core.ops import conv_1x1x1_bn, normalize, AngleMultipleLinear, KernelizedClassifier
 
 
 @HEADS.register_module()
@@ -49,35 +49,36 @@ class ClsHead(BaseHead):
         if spatial_type == 'avg':
             self.avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
 
+        self.enable_rebalance = enable_rebalance and rebalance_num_groups > 1
+        if self.enable_rebalance:
+            assert classification_layer == 'linear', 'Re-balancing supports linear head only'
+            assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
+
+            self.rebalance_alpha = rebalance_alpha
+            assert 0.0 <= self.rebalance_alpha <= 1.0
+            rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
+                self.class_sizes, rebalance_num_groups
+            )
+            print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
+                  f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
+            self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
+            rebalance_weights = np.where(rebalance_zero_mask > 0.0,
+                                         1.0 / np.sum(rebalance_zero_mask, axis=1, keepdims=True),
+                                         np.zeros_like(rebalance_zero_mask))
+            self.register_buffer('rebalance_weights', torch.from_numpy(rebalance_weights))
+
         self.with_embedding = embedding and self.embd_size > 0
-        self.enable_rebalance = self.with_embedding and enable_rebalance and rebalance_num_groups > 1
         if self.with_embedding:
             if self.enable_rebalance:
                 assert not enable_sampling, 'Re-balancing does not support embd sampling'
                 assert not enable_class_mixing, 'Re-balancing does not support embd mixing'
-                assert classification_layer == 'linear', 'Re-balancing supports linear head only'
-                assert self.class_sizes is not None, 'Re-balancing requires class_sizes'
 
-                self.rebalance_alpha = rebalance_alpha
-                assert 0.0 <= self.rebalance_alpha <= 1.0
-                rebalance_zero_mask, init_imbalance, imbalance_ratios = self._build_rebalance_masks(
-                    self.class_sizes, rebalance_num_groups
-                )
-                print(f'[INFO] Balance ratios for dataset with {self.num_classes} '
-                      f'classes ({init_imbalance} imbalance): {imbalance_ratios}')
-                self.register_buffer('rebalance_zero_mask', torch.from_numpy(rebalance_zero_mask))
-                rebalance_weights = np.where(rebalance_zero_mask > 0.0,
-                                             1.0 / np.sum(rebalance_zero_mask, axis=1, keepdims=True),
-                                             np.zeros_like(rebalance_zero_mask))
-                self.register_buffer('rebalance_weights', torch.from_numpy(rebalance_weights))
-                self.rebalance_losses_meta = dict()
-
-                self.fc_pre_angular = nn.ModuleList([
+                self.fc_pre_cls = nn.ModuleList([
                     conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
                     for _ in range(rebalance_num_groups)
                 ])
             else:
-                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                self.fc_pre_cls = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
 
             if classification_layer == 'linear':
                 self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
@@ -89,7 +90,16 @@ class ClsHead(BaseHead):
             else:
                 raise ValueError(f'Unknown classification layer: {classification_layer}')
         else:
-            self.fc_cls_out = nn.Linear(self.in_channels, self.num_classes)
+            if self.enable_rebalance:
+                self.internal_num_channels = int(1.3 * self.in_channels)
+                self.fc_pre_cls = nn.ModuleList([
+                    conv_1x1x1_bn(self.in_channels, self.internal_num_channels, as_list=False)
+                    for _ in range(rebalance_num_groups)
+                ])
+                self.fc_cls_out = nn.Linear(self.internal_num_channels, self.num_classes)
+            else:
+                self.fc_pre_cls = None
+                self.fc_cls_out = nn.Linear(self.in_channels, self.num_classes)
 
         self.enable_sampling = (self.with_embedding and
                                 enable_sampling and
@@ -218,7 +228,7 @@ class ClsHead(BaseHead):
 
         if self.with_embedding:
             if self.enable_rebalance:
-                unnorm_embd = [module(x) for module in self.fc_pre_angular]
+                unnorm_embd = [module(x) for module in self.fc_pre_cls]
                 norm_embd = [normalize(embd.view(-1, self.embd_size), dim=1) for embd in unnorm_embd]
                 split_scores = [self.fc_angular(embd) for embd in norm_embd]
 
@@ -227,7 +237,7 @@ class ClsHead(BaseHead):
 
                 extra_cls_score = split_scores
             else:
-                unnorm_embd = self.fc_pre_angular(x)
+                unnorm_embd = self.fc_pre_cls(x)
                 norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
 
                 if self.training:
@@ -246,8 +256,17 @@ class ClsHead(BaseHead):
                 extra_cls_score = None
         else:
             norm_embd = None
-            extra_cls_score = None
-            main_cls_score = self.fc_cls_out(x.view(-1, self.in_channels))
+            if self.enable_rebalance:
+                unnorm_embd = [module(x).view(-1, self.internal_num_channels) for module in self.fc_pre_cls]
+                split_scores = [self.fc_cls_out(embd) for embd in unnorm_embd]
+
+                all_scores = torch.cat([score.unsqueeze(1) for score in split_scores], dim=1)
+                main_cls_score = torch.sum(all_scores * self.rebalance_weights, dim=1)
+
+                extra_cls_score = split_scores
+            else:
+                extra_cls_score = None
+                main_cls_score = self.fc_cls_out(x.view(-1, self.in_channels))
 
         if return_extra_data:
             return main_cls_score, norm_embd, extra_cls_score
@@ -274,7 +293,6 @@ class ClsHead(BaseHead):
                 with torch.no_grad():
                     group_samples_mask = valid_samples_mask[:, group_id]
                     if torch.sum(group_samples_mask) == 0:
-                        # group_losses.append((f'loss/group{group_id}', 0.0))
                         continue
 
                     group_labels_mask = indexed_labels_mask[:, group_id]
@@ -284,12 +302,12 @@ class ClsHead(BaseHead):
                     group_targets = torch.argmax(group_labels, dim=1)
 
                 group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
-                group_loss = self.head_loss(group_cls_score, group_targets, increment_step=False)
 
-                # group_losses.append((f'loss/group{group_id}', group_loss))
+                group_loss_args = dict(increment_step=False) if self.with_embedding else dict()
+                group_loss = self.head_loss(group_cls_score, group_targets, **group_loss_args)
+
                 group_losses.append(group_loss)
 
-            # group_losses = balance_losses(group_losses, self.rebalance_losses_meta, 0.9)
             fused_group_loss = sum(group_losses) / float(len(group_losses))
             losses['loss/cls' + name] = \
                 (1.0 - self.rebalance_alpha) * main_cls_loss + self.rebalance_alpha * fused_group_loss
