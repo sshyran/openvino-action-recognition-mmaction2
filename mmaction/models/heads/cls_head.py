@@ -274,7 +274,7 @@ class ClsHead(BaseHead):
                 with torch.no_grad():
                     group_samples_mask = valid_samples_mask[:, group_id]
                     if torch.sum(group_samples_mask) == 0:
-                        group_losses.append((f'loss/group{group_id}', 0.0))
+                        # group_losses.append((f'loss/group{group_id}', 0.0))
                         continue
 
                     group_labels_mask = indexed_labels_mask[:, group_id]
@@ -286,9 +286,10 @@ class ClsHead(BaseHead):
                 group_cls_score = group_cls_score[group_samples_mask][:, group_logits_mask]
                 group_loss = self.head_loss(group_cls_score, group_targets, increment_step=False)
 
-                group_losses.append((f'loss/group{group_id}', group_loss))
+                # group_losses.append((f'loss/group{group_id}', group_loss))
+                group_losses.append(group_loss)
 
-            group_losses = balance_losses(group_losses, self.rebalance_losses_meta, 0.9)
+            # group_losses = balance_losses(group_losses, self.rebalance_losses_meta, 0.9)
             fused_group_loss = sum(group_losses) / float(len(group_losses))
             losses['loss/cls' + name] = \
                 (1.0 - self.rebalance_alpha) * main_cls_loss + self.rebalance_alpha * fused_group_loss

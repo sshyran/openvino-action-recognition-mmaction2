@@ -171,7 +171,7 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=4.5e-2,
+    lr=1e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
@@ -192,13 +192,13 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customstep',
-    step=[50, 70, 90],
+    step=[50, 100],
     gamma=0.1,
     warmup='cos',
     warmup_epochs=10,
-    warmup_ratio=2.3e-3,
+    warmup_ratio=1e-2,
 )
-total_epochs = 110
+total_epochs = 150
 
 # workflow
 workflow = [('train', 1)]
