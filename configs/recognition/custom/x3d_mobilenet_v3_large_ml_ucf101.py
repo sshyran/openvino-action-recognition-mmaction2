@@ -51,7 +51,7 @@ model = dict(
         in_channels=960,
         embedding=True,
         embd_size=256,
-        enable_rebalance=True,
+        enable_rebalance=False,
         rebalance_num_groups=3,
         loss_cls=dict(
             type='AMSoftmaxLoss',
@@ -173,8 +173,10 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
-        norm_type=2
+        method='adaptive',
+        clip=0.2,
+        # max_norm=40,
+        # norm_type=2,
     )
 )
 
