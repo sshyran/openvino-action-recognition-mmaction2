@@ -108,7 +108,8 @@ class DistOptimizerHook(Hook):
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
 
-        all_clip_coef = []
+        all_num_invalids, all_invalid_clip_coef = [], []
+        total_num_elements = 0
         for p in parameters:
             with torch.no_grad():
                 p_norms = _unit_wise_norm(p)
@@ -117,13 +118,20 @@ class DistOptimizerHook(Hook):
                 max_p_norms = float(clip) * p_norms.clamp_min(1e-3)
                 max_g_norms = g_norms.clamp_min(1e-6)
 
-                clip_coef = torch.where(g_norms > max_p_norms,
-                                        max_p_norms / max_g_norms,
-                                        torch.ones_like(g_norms))
-                all_clip_coef.append(torch.mean(clip_coef))
+                scales = max_p_norms / max_g_norms
+                invalid_mask = g_norms > max_p_norms
+                clip_coef = torch.where(invalid_mask, scales, torch.ones_like(scales))
+
+                num_invalids = torch.sum(invalid_mask).float().item()
+                all_invalid_clip_coef.append(torch.sum(scales[invalid_mask]) / max(1.0, num_invalids))
+                all_num_invalids.append(num_invalids)
+                total_num_elements += invalid_mask.nelement()
 
             p.grad.detach().mul_(clip_coef)
 
-        out_info = {'grad_scale': sum(all_clip_coef) / float(max(1, len(all_clip_coef)))}
+        out_info = {
+            'invalid_grad_scale': sum(all_invalid_clip_coef) / float(max(1, len(all_invalid_clip_coef))),
+            'invalid_grad_ratio': sum(all_num_invalids) / float(max(1, total_num_elements)),
+        }
 
         return out_info
