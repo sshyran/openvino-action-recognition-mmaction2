@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.utils import clip_grad
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors, _take_tensors
-from mmcv.runner import OptimizerHook
+from mmcv.runner import Hook, HOOKS
 
 _tensor_or_tensors = Union[torch.Tensor, Iterable[torch.Tensor]]
 
@@ -48,10 +48,12 @@ def _unit_wise_norm(x):
     return norms
 
 
-class DistOptimizerHook(OptimizerHook):
+@HOOKS.register_module()
+class DistOptimizerHook(Hook):
     def __init__(self, grad_clip=None, coalesce=True, bucket_size_mb=-1):
-        super().__init__(grad_clip)
+        super().__init__()
 
+        self.grad_clip = grad_clip
         self.coalesce = coalesce
         self.bucket_size_mb = bucket_size_mb
 
@@ -59,25 +61,50 @@ class DistOptimizerHook(OptimizerHook):
         tensors = [t for n, t in runner.model.named_buffers() if 'num_batches_tracked' not in n]
         allreduce_tensors(tensors, self.coalesce, self.bucket_size_mb)
 
+    def after_train_iter(self, runner):
+        runner.optimizer.zero_grad()
+        runner.outputs['loss'].backward()
+
+        if self.grad_clip is not None:
+            grad_norm_info = self.clip_grads(runner.model.parameters())
+            if len(grad_norm_info) > 0:
+                runner.log_buffer.update(grad_norm_info, runner.outputs['num_samples'])
+
+        runner.optimizer.step()
+
     def clip_grads(self, params):
         assert self.grad_clip is not None
 
+        grads_info = dict()
+
         params = list(filter(lambda p: p.requires_grad and p.grad is not None, params))
         if len(params) == 0:
-            return None
+            return grads_info
 
         method = self.grad_clip.get('method', 'default')
         grad_clip_cfg = {_key: _value for _key, _value in self.grad_clip.items() if _key != 'method'}
 
         if method == 'default':
-            return clip_grad.clip_grad_norm_(params, **grad_clip_cfg)
+            grads_info.update(self._default_clip_grad_norm(params, **grad_clip_cfg))
         elif method == 'adaptive':
-            return self._adaptive_clip_grad_norm(params, **grad_clip_cfg)
+            grads_info.update(self._adaptive_clip_grad_norm(params, **grad_clip_cfg))
         else:
             ValueError(f'Unknown gradient clipping method: {method}')
 
+        return grads_info
+
     @staticmethod
-    def _adaptive_clip_grad_norm(parameters: _tensor_or_tensors, clip: float) -> torch.Tensor:
+    def _default_clip_grad_norm(parameters: _tensor_or_tensors, **kwargs) -> dict:
+        out_info = dict()
+
+        grad_norm = clip_grad.clip_grad_norm_(parameters, **kwargs)
+        if grad_norm is not None:
+            out_info['grad_norm'] = float(grad_norm)
+
+        return out_info
+
+    @staticmethod
+    def _adaptive_clip_grad_norm(parameters: _tensor_or_tensors, clip: float) -> dict:
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
 
@@ -97,4 +124,6 @@ class DistOptimizerHook(OptimizerHook):
 
             p.grad.detach().mul_(clip_coef)
 
-        return sum(all_clip_coef) / float(max(1, len(all_clip_coef)))
+        out_info = {'grad_scale': sum(all_clip_coef) / float(max(1, len(all_clip_coef)))}
+
+        return out_info
