@@ -89,7 +89,7 @@ model = dict(
 train_cfg = dict(
     self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=False, mode='logits', weight=0.2),
-    loss_norm=dict(enable=True, gamma=0.9)
+    loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
     average_clips=None
@@ -171,14 +171,14 @@ data = dict(
 # optimizer
 optimizer = dict(
     type='SGD',
-    lr=1e-2,
+    lr=4.5e-2,
     momentum=0.9,
     weight_decay=1e-4
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
-        norm_type=2
+        method='adaptive',
+        clip=0.2,
     )
 )
 
@@ -192,14 +192,14 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[100],
-    min_lr_ratio=1e-2,
+    periods=[150],
+    min_lr_ratio=2.23e-3,
     alpha=1.5,
     warmup='cos',
     warmup_epochs=10,
-    warmup_ratio=1e-2,
+    warmup_ratio=2.23e-3,
 )
-total_epochs = 100
+total_epochs = 160
 
 # workflow
 workflow = [('train', 1)]
