@@ -1275,6 +1275,75 @@ class MixUp(object):
 
 
 @PIPELINES.register_module()
+class CrossNorm(object):
+    def __init__(self, root_dir, mean_std_file):
+        mean_std_file = osp.join(root_dir, mean_std_file)
+        if not osp.exists(mean_std_file):
+            raise ValueError(f'mean_std_file does not exist: {mean_std_file}')
+
+        self.cross_mean, self.cross_std = self._parse_data(mean_std_file)
+        self.num_tuples = len(self.cross_mean)
+        if self.num_tuples == 0:
+            raise ValueError('Found no mean (or std) tuples for CrossNorm')
+
+    @staticmethod
+    def _parse_data(data_file):
+        mean_data, std_data = [], []
+        with open(data_file) as input_stream:
+            for line in input_stream:
+                line_parts = line.strip().split(' ')
+                if len(line_parts) != 2:
+                    continue
+
+                mean_str, std_str = line_parts
+                mean_value = [float(v) for v in mean_str.split(',')]
+                std_value = [float(v) for v in std_str.split(',')]
+
+                assert len(mean_value) == 3
+                assert len(std_value) == 3
+
+                mean_data.append(mean_value)
+                std_data.append(std_value)
+
+        mean_data = np.array(mean_data, dtype=np.float32)
+        std_data = np.array(std_data, dtype=np.float32)
+
+        return mean_data.reshape([-1, 1, 1, 1, 3]), std_data.reshape([-1, 1, 1, 1, 3])
+
+    def __call__(self, results):
+        img_data = results['imgs']
+        num_clips = results['num_clips']
+        clip_len = results['clip_len']
+
+        processed_data = []
+        for clip_id in range(num_clips):
+            tuple_idx = np.random.randint(self.num_tuples)
+            cross_mean_value = self.cross_mean[tuple_idx]
+            cross_std_value = self.cross_std[tuple_idx]
+
+            clip_start = clip_id * clip_len
+            clip_end = clip_start + clip_len
+            float_clip = np.array(img_data[clip_start:clip_end], dtype=np.float32)
+
+            clip_mean = np.mean(float_clip, axis=(0, 1, 2), keepdims=True)
+            clip_std = np.mean(float_clip, axis=(0, 1, 2), keepdims=True)
+            norm_clip = (float_clip - clip_mean) / clip_std
+
+            cross_clip = cross_std_value * norm_clip + cross_mean_value
+            cross_clip = cross_clip.clip(0.0, 255.0).astype(np.uint8)
+            processed_data.extend(cross_clip.tolist())
+
+        results['imgs'] = processed_data
+
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}(' \
+                   f'size={self.num_tuples})'
+        return repr_str
+
+
+@PIPELINES.register_module()
 class PhotometricDistortion(object):
     def __init__(self, brightness_range=None, contrast_range=None, saturation_range=None,
                  hue_delta=None, noise_sigma=None, noise_separate=True, color_scale=None):

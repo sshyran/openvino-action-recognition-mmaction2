@@ -1,5 +1,5 @@
 
-TARGET_TYPES = 'MapFlippedLabels', 'MixUp'
+TARGET_TYPES = 'MapFlippedLabels', 'MixUp', 'CrossNorm'
 
 
 def propagate_root_dir(cfg, root_dir=None):
