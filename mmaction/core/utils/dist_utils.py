@@ -123,7 +123,7 @@ class DistOptimizerHook(Hook):
                 clip_coef = torch.where(invalid_mask, scales, torch.ones_like(scales))
 
                 num_invalids = torch.sum(invalid_mask).float().item()
-                all_invalid_clip_coef.append(torch.sum(scales[invalid_mask]) / max(1.0, num_invalids))
+                all_invalid_clip_coef.append(torch.sum(scales[invalid_mask]).float().item() / max(1.0, num_invalids))
                 all_num_invalids.append(num_invalids)
                 total_num_elements += invalid_mask.nelement()
 
