@@ -1308,7 +1308,7 @@ class CrossNorm(object):
         mean_data = np.array(mean_data, dtype=np.float32)
         std_data = np.array(std_data, dtype=np.float32)
 
-        return mean_data.reshape([-1, 1, 1, 1, 3]), std_data.reshape([-1, 1, 1, 1, 3])
+        return mean_data.reshape([-1, 1, 1, 3]), std_data.reshape([-1, 1, 1, 3])
 
     def __call__(self, results):
         img_data = results['imgs']
@@ -1321,17 +1321,30 @@ class CrossNorm(object):
             cross_mean_value = self.cross_mean[tuple_idx]
             cross_std_value = self.cross_std[tuple_idx]
 
-            clip_start = clip_id * clip_len
-            clip_end = clip_start + clip_len
-            float_clip = np.array(img_data[clip_start:clip_end], dtype=np.float32)
+            float_imgs = []
+            sum_x, sum_sqr_x = np.zeros([3], dtype=np.float32), np.zeros([3], dtype=np.float32)
+            for i in range(clip_len):
+                float_img = img_data[clip_id * clip_len + i].astype(np.float32)
+                float_imgs.append(float_img)
 
-            clip_mean = np.mean(float_clip, axis=(0, 1, 2), keepdims=True)
-            clip_std = np.mean(float_clip, axis=(0, 1, 2), keepdims=True)
-            norm_clip = (float_clip - clip_mean) / clip_std
+                sum_x += np.sum(float_img, axis=(0, 1))
+                sum_sqr_x += np.sum(float_img ** 2, axis=(0, 1))
 
-            cross_clip = cross_std_value * norm_clip + cross_mean_value
-            cross_clip = cross_clip.clip(0.0, 255.0).astype(np.uint8)
-            processed_data.extend(cross_clip.tolist())
+            num_elements = clip_len * np.prod(img_data[clip_id * clip_len].shape[:2])
+            clip_mean = sum_x / float(num_elements)
+            clip_sqr_mean = sum_sqr_x / float(num_elements)
+            clip_std = np.sqrt(clip_sqr_mean - clip_mean ** 2)
+
+            if np.all(clip_std > 1e-3):
+                for i in range(clip_len):
+                    float_img = float_imgs[i]
+                    norm_img = (float_img - clip_mean) / clip_std
+
+                    cross_img = cross_std_value * norm_img + cross_mean_value
+                    processed_data.append(cross_img.clip(0.0, 255.0).astype(np.uint8))
+            else:
+                for i in range(clip_len):
+                    processed_data.append(img_data[clip_id * clip_len + i])
 
         results['imgs'] = processed_data
 
