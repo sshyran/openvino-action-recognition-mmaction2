@@ -42,8 +42,11 @@ def allreduce_tensors(tensors, coalesce=True, bucket_size_mb=-1):
 
 def _unit_wise_norm(x):
     shape = x.size()
-    sum_dims = tuple(range(1, len(shape)))
-    norms = torch.sqrt(torch.sum(x ** 2, dim=sum_dims, keepdim=True))
+    if len(shape) <= 1:
+        norms = torch.abs(x)
+    else:
+        sum_dims = tuple(range(1, len(shape)))
+        norms = torch.sqrt(torch.sum(x ** 2, dim=sum_dims, keepdim=True))
 
     return norms
 
