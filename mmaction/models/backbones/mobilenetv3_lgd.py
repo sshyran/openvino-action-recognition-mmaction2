@@ -18,6 +18,12 @@ class ContextPool3d(nn.Module):
         keys = self.encoder(x)
         attention_map = torch.softmax(keys.view(-1, t * h * w, 1), dim=1)
 
+        context = torch.matmul(x.view(-1, c, t * h * w), attention_map)
+        out = context.view(-1, c, 1, 1, 1)
+
+        # attention_map = torch.softmax(keys.view(-1, 1, t, h * w), dim=3)
+        # out = torch.sum(x.view(-1, c, t, h * w) * attention_map, dim=3, keepdim=True)
+
         # with torch.no_grad():
         #     import matplotlib.pyplot as plt
         #     att = attention_map[0].view(t, h, w)
@@ -34,9 +40,6 @@ class ContextPool3d(nn.Module):
         #     for ii in range(t):
         #         axs[ii // ncols, ii % ncols].imshow(cpu_norm_att[ii], vmin=0, vmax=1)
         #     plt.show()
-
-        context = torch.matmul(x.view(-1, c, t * h * w), attention_map)
-        out = context.view(-1, c, 1, 1, 1)
 
         return out
 
