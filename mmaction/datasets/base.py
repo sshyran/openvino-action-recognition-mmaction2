@@ -85,9 +85,10 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         if self.logger is not None:
             self.logger.info(f'Pipeline:\n{str(self.pipeline)}')
 
-        self.video_infos = self._load_annotations(ann_file, data_prefix)
-        self.video_infos = self._add_dataset_info(self.video_infos, dataset_id=0, dataset_name=source)
-        self.video_infos = self._add_kpts_info(self.video_infos, data_prefix, kpts_prefix, load_kpts)
+        video_infos = self._load_annotations(ann_file, data_prefix)
+        video_infos = self._add_dataset_info(video_infos, dataset_id=0, dataset_name=source)
+        video_infos = self._add_kpts_info(video_infos, data_prefix, kpts_prefix, load_kpts)
+        self.video_infos = video_infos
 
     @staticmethod
     def _add_dataset_info(records, dataset_id, dataset_name):
