@@ -1192,7 +1192,7 @@ class BlockDropout(object):
 
 @PIPELINES.register_module()
 class MixUp(object):
-    def __init__(self, root_dir, annot, imgs_root, alpha=0.2, beta=None, scale=1.0):
+    def __init__(self, root_dir, annot, imgs_root, alpha=0.2, beta=None, scale=1.0, prob=1.0):
         if not isinstance(alpha, (int, float)):
             raise TypeError(f'Alpha must be an int or float, but got {type(alpha)}')
         self.alpha = float(alpha)
@@ -1221,6 +1221,9 @@ class MixUp(object):
         if len(self.image_paths) == 0:
             raise ValueError('Found no images for MixUp')
 
+        self.prob = prob
+        assert 0.0 <= self.prob <= 1.0
+
     @staticmethod
     def _parse_image_paths(annot, imgs_root):
         return [osp.join(imgs_root, x.strip().split(' ')[0]) for x in open(annot)]
@@ -1243,6 +1246,9 @@ class MixUp(object):
         return cropped_image
 
     def __call__(self, results):
+        if np.random.rand() > self.prob:
+            return results
+
         img_data = results['imgs']
         num_clips = results['num_clips']
         clip_len = results['clip_len']
@@ -1270,13 +1276,14 @@ class MixUp(object):
                    f'alpha={self.alpha}, ' \
                    f'beta={self.beta}, ' \
                    f'scale={self.scale}, ' \
-                   f'size={len(self.image_paths)})'
+                   f'size={len(self.image_paths)}, ' \
+                   f'prob={self.prob})'
         return repr_str
 
 
 @PIPELINES.register_module()
 class CrossNorm(object):
-    def __init__(self, root_dir, mean_std_file):
+    def __init__(self, root_dir, mean_std_file, prob=1.0):
         mean_std_file = osp.join(root_dir, mean_std_file)
         if not osp.exists(mean_std_file):
             raise ValueError(f'mean_std_file does not exist: {mean_std_file}')
@@ -1285,6 +1292,9 @@ class CrossNorm(object):
         self.num_tuples = len(self.cross_mean)
         if self.num_tuples == 0:
             raise ValueError('Found no mean (or std) tuples for CrossNorm')
+
+        self.prob = prob
+        assert 0.0 <= self.prob <= 1.0
 
     @staticmethod
     def _parse_data(data_file):
@@ -1311,6 +1321,9 @@ class CrossNorm(object):
         return mean_data.reshape([-1, 1, 1, 3]), std_data.reshape([-1, 1, 1, 3])
 
     def __call__(self, results):
+        if np.random.rand() > self.prob:
+            return results
+
         img_data = results['imgs']
         num_clips = results['num_clips']
         clip_len = results['clip_len']
@@ -1352,7 +1365,8 @@ class CrossNorm(object):
 
     def __repr__(self):
         repr_str = f'{self.__class__.__name__}(' \
-                   f'size={self.num_tuples})'
+                   f'size={self.num_tuples}, ' \
+                   f'prob={self.prob})'
         return repr_str
 
 

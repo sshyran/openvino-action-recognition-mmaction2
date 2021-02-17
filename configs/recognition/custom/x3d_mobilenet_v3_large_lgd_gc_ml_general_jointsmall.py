@@ -121,7 +121,7 @@ train_pipeline = [
     #      contrast_range=(0.6, 1.4),
     #      saturation_range=(0.7, 1.3),
     #      hue_delta=18),
-    dict(type='CrossNorm', mean_std_file='mean_std_list.txt'),
+    dict(type='CrossNorm', mean_std_file='mean_std_list.txt', prob=0.9),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
