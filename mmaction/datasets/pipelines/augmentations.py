@@ -1346,7 +1346,7 @@ class CrossNorm(object):
             num_elements = clip_len * np.prod(img_data[clip_id * clip_len].shape[:2])
             clip_mean = sum_x / float(num_elements)
             clip_sqr_mean = sum_sqr_x / float(num_elements)
-            clip_std = np.sqrt(clip_sqr_mean - clip_mean ** 2)
+            clip_std = np.sqrt((clip_sqr_mean - clip_mean ** 2).clip(0.0))
 
             if np.all(clip_std > 1e-3):
                 for i in range(clip_len):
