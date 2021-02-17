@@ -1,8 +1,8 @@
 from .augmentations import (CenterCrop, Flip, Fuse, MultiGroupCrop,
                             MultiScaleCrop, Normalize, RandomCrop,
                             RandomResizedCrop, Resize, TenCrop, ThreeCrop,
-                            CrossNorm)
-from .compose import Compose
+                            CrossNorm, Empty)
+from .compose import Compose, ProbCompose
 from .formating import (Collect, FormatShape, ImageToTensor, ToDataContainer,
                         ToTensor, Transpose)
 from .loading import (DecordDecode, DecordInit, DenseSampleFrames,
@@ -22,5 +22,6 @@ __all__ = [
     'GenerateLocalizationLabels', 'LoadLocalizationFeature', 'LoadProposals',
     'DecordInit', 'OpenCVInit', 'PyAVInit', 'SampleProposalFrames',
     'UntrimmedSampleFrames', 'RawFrameDecode', 'StreamSampleFrames',
-    'GenerateKptsMask', 'SparseSampleFrames', 'CrossNorm'
+    'GenerateKptsMask', 'SparseSampleFrames', 'CrossNorm', 'Empty',
+    'ProbCompose',
 ]

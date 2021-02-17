@@ -83,6 +83,11 @@ model = dict(
             ),
         ),
     ),
+    reg_cfg=dict(
+        max_ratio=10.0,
+        min_norm=0.1,
+        weight=0.01,
+    ),
 )
 
 # model training and testing settings
@@ -116,11 +121,19 @@ train_pipeline = [
          aspect_ratio_range=(0.5, 1.5)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    # dict(type='PhotometricDistortion',
-    #      brightness_range=(65, 190),
-    #      contrast_range=(0.6, 1.4),
-    #      saturation_range=(0.7, 1.3),
-    #      hue_delta=18),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
+
     dict(type='CrossNorm', mean_std_file='mean_std_list.txt', prob=0.9),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),

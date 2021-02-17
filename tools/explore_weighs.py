@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import mmcv
 import numpy as np
 import torch.nn as nn
+import networkx as nx
 
 from mmaction.models import build_recognizer
 from mmaction.core import load_checkpoint
@@ -71,7 +72,7 @@ def collect_conv_layers(model, eps=1e-5):
             running_var = m.running_var.detach().cpu().numpy()
 
             scales = alpha / np.sqrt(running_var + eps)
-            scale_shape = [-1] + [1] * len(last_conv['weight'].shape)
+            scale_shape = [-1] + [1] * (len(last_conv['weight'].shape) - 1)
             scales = scales.reshape(scale_shape)
 
             last_conv['weight'] = scales * last_conv['weight']
@@ -81,7 +82,7 @@ def collect_conv_layers(model, eps=1e-5):
     return conv_layers
 
 
-def show_stat(conv_layers, max_scale=5.0, max_similarity=0.5, sim_percentile=95):
+def show_stat(conv_layers, max_scale=10.0, max_similarity=0.8, sim_percentile=95):
     invalid_weight_scales = []
     invalid_bias_scales = []
     invalid_sim = []
@@ -105,13 +106,16 @@ def show_stat(conv_layers, max_scale=5.0, max_similarity=0.5, sim_percentile=95)
             norm_filters = filters / norms.reshape([-1, 1])
             similarities = np.matmul(norm_filters, np.transpose(norm_filters))
 
-            similarities = np.abs(similarities[np.triu_indices(similarities.shape[0], k=1)])
+            connections = np.abs(similarities) > max_similarity
+            graph = nx.from_numpy_matrix(connections)
+            connected_comp = nx.connected_components(graph)
 
-            num_invalid = np.sum(similarities > max_similarity)
-            num_total = len(similarities)
+            num_invalid = sum(len(comp) - 1 for comp in connected_comp)
             if num_invalid > 0:
-                sim = np.percentile(similarities, sim_percentile)
-                invalid_sim.append((name, kernel_type, sim, num_invalid, num_total, num_filters))
+                all_similarities = np.abs(similarities[np.triu_indices(similarities.shape[0], k=1)])
+                sim = np.percentile(all_similarities, sim_percentile)
+
+                invalid_sim.append((name, kernel_type, sim, num_invalid, num_filters))
 
         scales = max_norm / norms
         num_invalid = np.sum(scales > max_scale)
@@ -144,9 +148,9 @@ def show_stat(conv_layers, max_scale=5.0, max_similarity=0.5, sim_percentile=95)
     if len(invalid_sim) > 0:
         print('\nFound {} layers with invalid similarity (value > {}):'
               .format(len(invalid_sim), max_similarity))
-        for name, kernel_type, sim, num_invalid, num_total, num_filters in invalid_sim:
-            print('   - {} ({}): {:.3f} (invalid: {} / {} size={})'
-                  .format(name, kernel_type, sim, num_invalid, num_total, num_filters))
+        for name, kernel_type, sim, num_invalid, num_filters in invalid_sim:
+            print('   - {} ({}): {:.3f} (invalid: {} / {})'
+                  .format(name, kernel_type, sim, num_invalid, num_filters))
     else:
         print('\nThere are no layers with invalid similarity.')
 

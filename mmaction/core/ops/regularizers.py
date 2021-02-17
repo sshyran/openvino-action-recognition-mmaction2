@@ -44,7 +44,7 @@ class NormRegularizer(nn.Module):
                 running_var = m.running_var.detach()
 
                 scales = alpha / torch.sqrt(running_var + eps)
-                scale_shape = [-1] + [1] * len(last_conv['weight'].size())
+                scale_shape = [-1] + [1] * (len(last_conv['weight'].size()) - 1)
                 scales = scales.view(*scale_shape)
 
                 last_conv['weight'] = scales * last_conv['weight']

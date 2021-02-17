@@ -1371,6 +1371,16 @@ class CrossNorm(object):
 
 
 @PIPELINES.register_module()
+class Empty(object):
+    def __call__(self, results):
+        return results
+
+    def __repr__(self):
+        repr_str = f'{self.__class__.__name__}'
+        return repr_str
+
+
+@PIPELINES.register_module()
 class PhotometricDistortion(object):
     def __init__(self, brightness_range=None, contrast_range=None, saturation_range=None,
                  hue_delta=None, noise_sigma=None, noise_separate=True, color_scale=None):
