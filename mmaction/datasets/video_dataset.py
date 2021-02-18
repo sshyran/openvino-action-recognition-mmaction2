@@ -1,4 +1,5 @@
 import os.path as osp
+from collections import defaultdict
 
 import torch
 
@@ -79,7 +80,18 @@ class VideoDataset(RecognitionDataset):
 
                 video_infos.append(dict(
                     filename=filename,
-                    label=onehot if self.multi_class else label
+                    label=onehot if self.multi_class else label,
+                    matched_pred=defaultdict(int),
                 ))
 
         return video_infos
+
+    def update_meta_info(self, pred_labels, sample_idx, clip_starts, clip_ends):
+        for idx, pred_label, start, end in zip(sample_idx, pred_labels, clip_starts, clip_ends):
+            video_info = self.video_infos[idx]
+            video_label = video_info['label']
+            video_matches = video_info['matched_pred']
+
+            if video_label == pred_label:
+                for ii in range(start, end):
+                    video_matches[ii] += 1
