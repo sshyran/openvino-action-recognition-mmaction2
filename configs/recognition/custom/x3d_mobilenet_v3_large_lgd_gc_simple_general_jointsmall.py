@@ -93,11 +93,18 @@ train_pipeline = [
          aspect_ratio_range=(0.5, 1.5)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -154,8 +161,8 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
-        norm_type=2
+        method='adaptive',
+        clip=0.2,
     )
 )
 
@@ -169,14 +176,14 @@ params_config = dict(
 # learning policy
 lr_config = dict(
     policy='customcos',
-    periods=[100],
+    periods=[150],
     min_lr_ratio=1e-2,
-    alpha=1.5,
+    alpha=1.4,
     warmup='cos',
     warmup_epochs=10,
     warmup_ratio=1e-2,
 )
-total_epochs = 100
+total_epochs = 160
 
 # workflow
 workflow = [('train', 1)]
