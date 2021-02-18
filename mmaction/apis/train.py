@@ -1,7 +1,7 @@
 import torch
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import DistSamplerSeedHook, EpochBasedRunner, build_optimizer
-from mmcv.runner.hooks import Fp16OptimizerHook
+from mmcv.runner.hooks import Fp16OptimizerHook, EMAHook
 
 from ..core import DistEvalHook, EvalHook, load_checkpoint, DistOptimizerHook
 from ..datasets import build_dataloader, build_dataset
@@ -100,6 +100,10 @@ def train_model(model,
         optimizer_config = DistOptimizerHook(**cfg.optimizer_config)
     else:
         optimizer_config = cfg.optimizer_config
+
+    ema_cfg = cfg.get('ema_config', None)
+    if ema_cfg:
+        runner.register_hook(EMAHook(**ema_cfg))
 
     # register hooks
     runner.register_training_hooks(cfg.lr_config, optimizer_config,
