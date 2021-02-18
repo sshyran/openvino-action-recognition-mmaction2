@@ -75,6 +75,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.with_self_challenging = hasattr(train_cfg, 'self_challenging') and train_cfg.self_challenging.enable
         self.with_clip_mixing = hasattr(train_cfg, 'clip_mixing') and train_cfg.clip_mixing.enable
         self.with_loss_norm = hasattr(train_cfg, 'loss_norm') and train_cfg.loss_norm.enable
+        self.with_sample_filtering = hasattr(train_cfg, 'sample_filtering') and train_cfg.sample_filtering.enable
+        self.train_meta = {}
 
         self.backbone = builder.build_backbone(backbone)
         self.spatial_temporal_module = builder.build_reducer(reducer)
@@ -234,6 +236,9 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         if self.with_self_challenging and not features.requires_grad:
             features.requires_grad = True
 
+        if self.with_sample_filtering:
+            pred_labels = torch.zeros_like(labels.view(-1))
+
         heads = self.cls_head if self.multi_head else [self.cls_head]
         for head_id, cl_head in enumerate(heads):
             trg_mask = (dataset_id == head_id).view(-1) if dataset_id is not None else None
@@ -291,10 +296,24 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                     trg_main_scores, trg_norm_embd, num_clips, cl_head.last_scale
                 )
 
+            if self.with_sample_filtering:
+                with torch.no_grad():
+                    pred_labels[trg_mask] = torch.argmax(trg_main_scores, dim=1)
+
         if self.regularizer is not None:
             losses['loss/reg'] = self.regularizer(self.backbone)
 
+        if self.with_sample_filtering:
+            self._add_train_meta_info(pred_labels=pred_labels, **kwargs)
+
         return losses
+
+    def _add_train_meta_info(self, **kwargs):
+        for meta_name in ['pred_labels', 'sample_idx', 'clip_starts', 'clip_ends']:
+            assert meta_name in kwargs.keys()
+            assert kwargs[meta_name] is not None
+
+            self.train_meta[meta_name] = kwargs[meta_name].clone().view(-1).detach()
 
     def forward_test(self, imgs, dataset_id=None):
         """Defines the computation performed at every call when evaluation and

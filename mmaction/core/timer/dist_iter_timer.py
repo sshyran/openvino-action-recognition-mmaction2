@@ -6,7 +6,7 @@ import torch.distributed as dist
 from mmcv.runner.hooks import HOOKS, Hook
 
 
-@HOOKS.register_module(force=True)
+@HOOKS.register_module()
 class DistIterTimerHook(Hook):
     def before_epoch(self, runner):
         self.t = time.time()

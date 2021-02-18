@@ -289,3 +289,6 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         datasets = self._parse_data()
 
         return [datasets[dataset_id] for dataset_id in sorted(datasets.keys())]
+
+    def update_meta_info(self, **kwargs):
+        pass

@@ -3,7 +3,7 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import DistSamplerSeedHook, EpochBasedRunner, build_optimizer
 from mmcv.runner.hooks import Fp16OptimizerHook, EMAHook
 
-from ..core import DistEvalHook, EvalHook, load_checkpoint, DistOptimizerHook
+from ..core import DistEvalHook, EvalHook, load_checkpoint, DistOptimizerHook, SampleInfoAggregatorHook
 from ..datasets import build_dataloader, build_dataset
 from ..utils import get_root_logger
 from ..models import build_params_manager
@@ -116,6 +116,9 @@ def train_model(model,
     params_manager_cfg = cfg.get('params_config', None)
     if params_manager_cfg is not None:
         runner.register_hook(build_params_manager(params_manager_cfg))
+
+    if model.module.with_sample_filtering:
+        runner.register_hook(SampleInfoAggregatorHook())
 
     if validate:
         val_dataset = build_dataset(cfg.data, 'val', dict(test_mode=True))
