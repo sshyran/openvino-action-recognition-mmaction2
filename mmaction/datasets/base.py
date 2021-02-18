@@ -192,6 +192,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results = copy.deepcopy(self.video_infos[idx])
         results['modality'] = self.modality
         results['start_index'] = self.start_index
+        results['sample_idx'] = idx
 
         return self.pipeline(results)
 

@@ -167,12 +167,18 @@ class SampleFrames(object):
         else:
             raise ValueError('Illegal out_of_bound option.')
 
+        frame_inds = frame_inds.astype(np.int)
+        clip_starts = np.min(frame_inds, axis=1)
+        clip_ends = np.max(frame_inds, axis=1) + 1
+
         start_index = results['start_index']
-        frame_inds = np.concatenate(frame_inds) + start_index
-        results['frame_inds'] = frame_inds.astype(np.int)
+        results['frame_inds'] = np.concatenate(frame_inds) + start_index
+        results['clip_starts'] = clip_starts + start_index
+        results['clip_ends'] = clip_ends + start_index
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips
+
         return results
 
     def __repr__(self):
