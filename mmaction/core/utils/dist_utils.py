@@ -111,7 +111,10 @@ class DistOptimizerHook(Hook):
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
 
+        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), 2) for p in parameters]), 2)
+
         all_num_invalids, all_invalid_clip_coef = [], []
+        invalids = []
         total_num_elements = 0
         for p in parameters:
             with torch.no_grad():
@@ -130,11 +133,17 @@ class DistOptimizerHook(Hook):
                 all_num_invalids.append(num_invalids)
                 total_num_elements += invalid_mask.nelement()
 
+                if num_invalids > 0:
+                    ratio = float(clip) / torch.min(scales[invalid_mask]).float().item()
+                    grad = torch.norm(p.grad, 2)
+                    invalids.append((n, ratio, grad))
+
             p.grad.detach().mul_(clip_coef)
 
         out_info = {
             'invalid_grad_scale': sum(all_invalid_clip_coef) / float(max(1, len(all_invalid_clip_coef))),
             'invalid_grad_ratio': sum(all_num_invalids) / float(max(1, total_num_elements)),
+            'grad_norm': total_norm.item(),
         }
 
         return out_info
