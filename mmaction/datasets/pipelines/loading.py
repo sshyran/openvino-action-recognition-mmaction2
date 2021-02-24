@@ -102,15 +102,17 @@ class SampleFrames(object):
         avg_interval = (num_frames - ori_clip_len + 1) // self.num_clips
 
         if avg_interval > 0:
-            counts = np.ones([num_frames], dtype=np.float32)
+            frame_counts = np.ones([num_frames], dtype=np.float32)
             for frame_id, num_pos_answers in frames_meta_info.items():
-                counts[frame_id] += num_pos_answers
+                frame_counts[frame_id] += num_pos_answers
 
-            probs = counts[:(num_frames - ori_clip_len + 1)]
-            probs /= np.sum(probs)
+            frame_cumsum = np.cumsum(frame_counts)
+            frame_pad_cumsum = np.pad(frame_cumsum, (1, 0), 'constant')
+            window_counts = frame_cumsum[(ori_clip_len - 1):] - frame_pad_cumsum[:-ori_clip_len]
+            probs = window_counts / np.sum(window_counts)
 
             clip_offsets = np.sort(
-                np.random.choice(np.arange(num_frames - ori_clip_len + 1), self.num_clips, p=probs)
+                np.random.choice(np.arange(len(probs)), self.num_clips, p=probs)
             )
         elif num_frames > max(self.num_clips, ori_clip_len):
             clip_offsets = np.sort(
