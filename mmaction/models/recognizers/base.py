@@ -310,8 +310,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
     def _add_train_meta_info(self, **kwargs):
         for meta_name in ['pred_labels', 'sample_idx', 'clip_starts', 'clip_ends']:
-            assert meta_name in kwargs.keys()
-            assert kwargs[meta_name] is not None
+            assert meta_name in kwargs.keys(), f'There is no {meta_name} in meta info'
+            assert kwargs[meta_name] is not None, f'The value of {meta_name} is None'
 
             self.train_meta[meta_name] = kwargs[meta_name].clone().view(-1).detach()
 

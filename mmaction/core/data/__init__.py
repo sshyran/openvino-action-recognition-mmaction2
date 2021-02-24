@@ -1,4 +1,4 @@
-from .sample_filtering import SampleInfoAggregatorHook
+from .sample_info_aggregator import SampleInfoAggregatorHook
 
 __all__ = [
     'SampleInfoAggregatorHook',

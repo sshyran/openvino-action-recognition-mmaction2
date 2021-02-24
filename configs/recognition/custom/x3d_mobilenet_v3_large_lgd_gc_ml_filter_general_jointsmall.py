@@ -47,17 +47,40 @@ model = dict(
     ),
     cls_head=dict(
         type='ClsHead',
-        num_classes=101,
+        num_classes=700,
         temporal_size=1,
         spatial_size=1,
         dropout_ratio=None,
         in_channels=960,
-        embedding=False,
+        embedding=True,
+        embd_size=256,
         enable_rebalance=False,
         rebalance_num_groups=3,
+        reg_weight=1.0,
+        reg_threshold=0.1,
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            loss_weight=1.0
+            type='AMSoftmaxLoss',
+            target_loss='ce',
+            scale_cfg=dict(
+                type='ConstantScalarScheduler',
+                scale=15.0,
+            ),
+            pr_product=False,
+            margin_type='cos',
+            margin=0.35,
+            gamma=0.0,
+            t=1.0,
+            conf_penalty_weight=0.085,
+            filter_type='positives',
+            top_k=None,
+        ),
+        losses_extra=dict(
+            loss_lpush=dict(
+                type='LocalPushLoss',
+                margin=0.1,
+                weight=1.0,
+                smart_margin=True,
+            ),
         ),
     ),
 )
@@ -67,7 +90,7 @@ train_cfg = dict(
     self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=False, mode='logits', weight=0.2),
     loss_norm=dict(enable=False, gamma=0.9),
-    sample_filtering=dict(enable=True),
+    sample_filtering=dict(enable=True, collect_epochs=30),
 )
 test_cfg = dict(
     average_clips=None
@@ -106,6 +129,7 @@ train_pipeline = [
                   mean_std_file='mean_std_list.txt'),
          ],
          probs=[0.1, 0.45, 0.45]),
+    dict(type='CrossNorm', mean_std_file='mean_std_list.txt', prob=0.9),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id', 'sample_idx', 'clip_starts', 'clip_ends'], meta_keys=[]),

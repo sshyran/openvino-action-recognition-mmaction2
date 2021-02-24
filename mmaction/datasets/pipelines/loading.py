@@ -97,6 +97,35 @@ class SampleFrames(object):
 
         return clip_offsets
 
+    def _get_train_adaptive_clips(self, num_frames, frames_meta_info):
+        ori_clip_len = self.clip_len * self.frame_interval
+        avg_interval = (num_frames - ori_clip_len + 1) // self.num_clips
+
+        if avg_interval > 0:
+            counts = np.ones([num_frames], dtype=np.float32)
+            for frame_id, num_pos_answers in frames_meta_info.items():
+                counts[frame_id] += num_pos_answers
+
+            probs = counts[:(num_frames - ori_clip_len + 1)]
+            probs /= np.sum(probs)
+
+            clip_offsets = np.sort(
+                np.random.choice(np.arange(num_frames - ori_clip_len + 1), self.num_clips, p=probs)
+            )
+        elif num_frames > max(self.num_clips, ori_clip_len):
+            clip_offsets = np.sort(
+                np.random.randint(num_frames - ori_clip_len + 1, size=self.num_clips)
+            )
+        elif avg_interval == 0:
+            ratio = (num_frames - ori_clip_len + 1.0) / self.num_clips
+            clip_offsets = np.around(
+                np.arange(self.num_clips) * ratio
+            )
+        else:
+            clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
+
+        return clip_offsets
+
     def _get_test_clips(self, num_frames):
         """Get clip offsets in test mode.
 
@@ -122,7 +151,7 @@ class SampleFrames(object):
             clip_offsets = np.zeros((self.num_clips, ), dtype=np.int)
         return clip_offsets
 
-    def _sample_clips(self, num_frames):
+    def _sample_clips(self, num_frames, frames_meta_info=None):
         """Choose clip offsets for the video in a given mode.
 
         Args:
@@ -133,8 +162,10 @@ class SampleFrames(object):
         """
         if self.test_mode:
             clip_offsets = self._get_test_clips(num_frames)
-        else:
+        elif frames_meta_info is None:
             clip_offsets = self._get_train_clips(num_frames)
+        else:
+            clip_offsets = self._get_train_adaptive_clips(num_frames, frames_meta_info)
 
         return clip_offsets
 
@@ -147,13 +178,17 @@ class SampleFrames(object):
         """
         total_frames = results['total_frames']
 
-        clip_offsets = self._sample_clips(total_frames)
+        frames_meta_info = None
+        if results.get('sample_filtering', False):
+            frames_meta_info = results['matched_pred'] if not results['adaptive_mode'] else None
+
+        clip_offsets = self._sample_clips(total_frames, frames_meta_info)
         frame_inds = np.arange(self.clip_len)[None, :] * self.frame_interval
         frame_inds = np.concatenate(clip_offsets[:, None] + frame_inds)
 
         if self.temporal_jitter:
-            perframe_offsets = np.random.randint(self.frame_interval, size=len(frame_inds))
-            frame_inds += perframe_offsets
+            per_frame_offsets = np.random.randint(self.frame_interval, size=len(frame_inds))
+            frame_inds += per_frame_offsets
 
         frame_inds = frame_inds.reshape((-1, self.clip_len))
         if self.out_of_bound_opt == 'loop':
@@ -173,8 +208,8 @@ class SampleFrames(object):
 
         start_index = results['start_index']
         results['frame_inds'] = np.concatenate(frame_inds) + start_index
-        results['clip_starts'] = clip_starts + start_index
-        results['clip_ends'] = clip_ends + start_index
+        results['clip_starts'] = clip_starts
+        results['clip_ends'] = clip_ends
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
         results['num_clips'] = self.num_clips

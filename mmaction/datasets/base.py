@@ -90,6 +90,9 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         video_infos = self._add_kpts_info(video_infos, data_prefix, kpts_prefix, load_kpts)
         self.video_infos = video_infos
 
+        self.enable_sample_filtering = False
+        self.enable_adaptive_mode = False
+
     @staticmethod
     def _add_dataset_info(records, dataset_id, dataset_name):
         for record in records:
@@ -193,6 +196,8 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         results['sample_idx'] = idx
+        results['sample_filtering'] = self.enable_sample_filtering
+        results['adaptive_mode'] = self.enable_adaptive_mode
 
         return self.pipeline(results)
 

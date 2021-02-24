@@ -6,19 +6,26 @@ from mmcv.runner.hooks import HOOKS, Hook
 
 @HOOKS.register_module()
 class SampleInfoAggregatorHook(Hook):
-    def after_iter(self, runner):
+    def __init__(self, collect_epochs=20):
+        self.collect_epochs = collect_epochs
+        assert self.collect_epochs >= 0
+
+    def after_train_iter(self, runner):
         local_meta = runner.model.module.train_meta
-        sync_meta = {meta_name: self._sync(meta_data) for meta_name, meta_data in local_meta.items()}
+        sync_meta = {
+            meta_name: self._sync(meta_data, runner.rank, runner.world_size)
+            for meta_name, meta_data in local_meta.items()
+        }
 
         dataset = runner.data_loader.dataset
+        dataset.enable_sample_filtering = True
+        dataset.enable_adaptive_mode = runner.epoch < self.collect_epochs
         dataset.update_meta_info(**sync_meta)
 
     @staticmethod
-    def _sync(data):
+    def _sync(data, rank, world_size):
         if dist.is_available() and dist.is_initialized():
             batch_size = data.size(0)
-            world_size = dist.get_world_size()
-            rank = dist.get_rank()
 
             shared_shape = [world_size * batch_size] + list(data.shape[1:])
             shared_data = torch.zeros(shared_shape, dtype=data.dtype, device=data.device)

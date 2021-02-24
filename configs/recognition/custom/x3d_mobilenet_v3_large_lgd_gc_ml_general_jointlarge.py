@@ -89,7 +89,7 @@ model = dict(
 train_cfg = dict(
     self_challenging=dict(enable=False, drop_p=0.33),
     clip_mixing=dict(enable=False, mode='logits', weight=0.2),
-    loss_norm=dict(enable=True, gamma=0.9)
+    loss_norm=dict(enable=False, gamma=0.9)
 )
 test_cfg = dict(
     average_clips=None
@@ -116,11 +116,18 @@ train_pipeline = [
          aspect_ratio_range=(0.5, 1.5)),
     dict(type='Resize', scale=(input_img_size, input_img_size), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
-    dict(type='PhotometricDistortion',
-         brightness_range=(65, 190),
-         contrast_range=(0.6, 1.4),
-         saturation_range=(0.7, 1.3),
-         hue_delta=18),
+    dict(type='ProbCompose',
+         transforms=[
+             dict(type='Empty'),
+             dict(type='PhotometricDistortion',
+                  brightness_range=(65, 190),
+                  contrast_range=(0.6, 1.4),
+                  saturation_range=(0.7, 1.3),
+                  hue_delta=18),
+             dict(type='CrossNorm',
+                  mean_std_file='mean_std_list.txt'),
+         ],
+         probs=[0.1, 0.45, 0.45]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label', 'dataset_id'], meta_keys=[]),
@@ -177,8 +184,8 @@ optimizer = dict(
 )
 optimizer_config = dict(
     grad_clip=dict(
-        max_norm=40,
-        norm_type=2
+        method='adaptive',
+        clip=0.2,
     )
 )
 
