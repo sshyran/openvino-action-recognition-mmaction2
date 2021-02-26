@@ -23,6 +23,8 @@ def parse_args():
                         help='checkpoint file')
     parser.add_argument('--data_dir', type=str,
                         help='the dir with dataset')
+    parser.add_argument('--classes', type=str, nargs='+',
+                        help='name of classes in classification dataset')
     parser.add_argument('--out', default=None,
                         help='output result file in pickle format')
     parser.add_argument('--fuse_conv_bn', action='store_true',

@@ -30,6 +30,8 @@ def parse_args():
                         help='the dir to save logs and models')
     parser.add_argument('--tensorboard_dir',
                         help='the dir to save tensorboard logs')
+    parser.add_argument('--classes', type=str, nargs='+',
+                        help='name of classes in classification dataset')
     parser.add_argument('--resume_from',
                         help='the checkpoint file to resume from')
     parser.add_argument('--load_from',
