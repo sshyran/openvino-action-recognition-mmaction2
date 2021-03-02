@@ -88,7 +88,7 @@ class VideoDataset(RecognitionDataset):
 
     def update_meta_info(self, pred_labels, sample_idx, clip_starts, clip_ends):
         for idx, pred_label, start, end in zip(sample_idx, pred_labels, clip_starts, clip_ends):
-            video_info = self.video_infos[idx]
+            video_info = self.records[idx]
             video_label = video_info['label']
             video_matches = video_info['matched_pred']
 

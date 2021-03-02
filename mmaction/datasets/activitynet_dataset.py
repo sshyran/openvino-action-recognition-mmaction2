@@ -97,22 +97,22 @@ class ActivityNetDataset(BaseDataset):
 
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
-        results = copy.deepcopy(self.video_infos[idx])
+        results = copy.deepcopy(self.records[idx])
         return self.pipeline(results)
 
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
-        results = copy.deepcopy(self.video_infos[idx])
+        results = copy.deepcopy(self.records[idx])
         return self.pipeline(results)
 
     def __len__(self):
         """Get the size of the dataset."""
-        return len(self.video_infos)
+        return len(self.records)
 
     def _import_ground_truth(self):
         """Read ground truth data from video_infos."""
         ground_truth = {}
-        for video_info in self.video_infos:
+        for video_info in self.records:
             video_id = video_info['video_name'][2:]
             this_video_ground_truths = []
             for ann in video_info['annotations']:

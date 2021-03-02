@@ -10,6 +10,7 @@ import mmcv
 
 from mmaction.models import build_recognizer
 from mmaction.core import load_checkpoint
+from mmaction.utils import ExtendedDictAction
 
 
 def convert_to_onnx(net, input_size, output_file_path, opset, check=True):
@@ -90,6 +91,8 @@ def parse_args():
     parser.add_argument('checkpoint', help="path to file with model's weights")
     parser.add_argument('output_dir', help='path to directory to save exported models in')
     parser.add_argument('--opset', type=int, default=10, help='ONNX opset')
+    parser.add_argument('--update_config', nargs='+', action=ExtendedDictAction,
+                        help='Update configuration file by parameters specified here.')
 
     subparsers = parser.add_subparsers(title='target', dest='target', help='target model format')
     subparsers.required = True
@@ -97,13 +100,14 @@ def parse_args():
     parser_openvino = subparsers.add_parser('openvino', help='export to OpenVINO')
     parser_openvino.add_argument('--input_format', choices=['BGR', 'RGB'], default='RGB',
                                  help='Input image format for exported model.')
-    args = parser.parse_args()
 
-    return args
+    return parser.parse_args()
 
 
 def main(args):
     cfg = mmcv.Config.fromfile(args.config)
+    if args.update_config is not None:
+        cfg.merge_from_dict(args.update_config)
     cfg.data.videos_per_gpu = 1
 
     net = build_recognizer(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)

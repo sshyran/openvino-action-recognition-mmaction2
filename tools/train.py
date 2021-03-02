@@ -30,8 +30,6 @@ def parse_args():
                         help='the dir to save logs and models')
     parser.add_argument('--tensorboard_dir',
                         help='the dir to save tensorboard logs')
-    parser.add_argument('--classes', type=str, nargs='+',
-                        help='name of classes in classification dataset')
     parser.add_argument('--resume_from',
                         help='the checkpoint file to resume from')
     parser.add_argument('--load_from',
@@ -125,8 +123,10 @@ def update_config(cfg, args):
 
 
 def main():
+    # parse arguments
     args = parse_args()
 
+    # load config
     cfg = Config.fromfile(args.config)
     if args.update_config is not None:
         cfg.merge_from_dict(args.update_config)
@@ -140,9 +140,6 @@ def main():
 
     # create work_dir
     mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
-
-    # # dump config
-    # cfg.dump(osp.join(cfg.work_dir, osp.basename(args.config)))
 
     # init logger before other steps
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
@@ -173,6 +170,7 @@ def main():
     cfg.seed = args.seed
     meta['seed'] = args.seed
 
+    # build datasets
     datasets = [build_dataset(cfg.data, 'train', dict(logger=logger))]
     logger.info(f'Train datasets:\n{str(datasets[0])}')
 
@@ -184,6 +182,12 @@ def main():
         datasets.append(build_dataset(copy.deepcopy(cfg.data), 'val', dict(logger=logger)))
         logger.info(f'Val datasets:\n{str(datasets[-1])}')
 
+    # filter dataset labels
+    if cfg.get('classes', ''):
+        target_class_ids = list(map(int, cfg.classes.split(',')))
+        datasets = [dataset.filter(target_class_ids) for dataset in datasets]
+
+    # build model
     class_sizes = datasets[0].class_sizes()
     model = build_model(
         cfg.model,
@@ -192,6 +196,7 @@ def main():
         class_sizes=class_sizes
     )
 
+    # define ignore layers
     ignore_prefixes = []
     if hasattr(cfg, 'reset_layer_prefixes') and isinstance(cfg.reset_layer_prefixes, (list, tuple)):
         ignore_prefixes += cfg.reset_layer_prefixes
@@ -199,6 +204,7 @@ def main():
     if hasattr(cfg, 'reset_layer_suffixes') and isinstance(cfg.reset_layer_suffixes, (list, tuple)):
         ignore_suffixes += cfg.reset_layer_suffixes
 
+    # train model
     train_model(
         model,
         datasets,

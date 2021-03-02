@@ -115,7 +115,7 @@ class TestDataset(object):
         rawframe_dataset = RawframeDataset(self.frame_ann_file,
                                            self.frame_pipeline,
                                            self.data_prefix)
-        rawframe_infos = rawframe_dataset.video_infos
+        rawframe_infos = rawframe_dataset.records
         frame_dir = osp.join(self.data_prefix, 'test_imgs')
         assert rawframe_infos == [
             dict(frame_dir=frame_dir, total_frames=5, label=127)
@@ -128,7 +128,7 @@ class TestDataset(object):
             self.frame_pipeline,
             self.data_prefix,
             with_offset=True)
-        rawframe_infos = rawframe_dataset.video_infos
+        rawframe_infos = rawframe_dataset.records
         frame_dir = osp.join(self.data_prefix, 'test_imgs')
         assert rawframe_infos == [
             dict(frame_dir=frame_dir, offset=2, total_frames=5, label=127)
@@ -142,7 +142,7 @@ class TestDataset(object):
             self.data_prefix,
             multi_class=True,
             num_classes=100)
-        rawframe_infos = rawframe_dataset.video_infos
+        rawframe_infos = rawframe_dataset.records
         frame_dir = osp.join(self.data_prefix, 'test_imgs')
         label0 = torch.zeros(100)
         label0[[1]] = 1.0
@@ -168,7 +168,7 @@ class TestDataset(object):
             self.video_ann_file,
             self.video_pipeline,
             data_prefix=self.data_prefix)
-        video_infos = video_dataset.video_infos
+        video_infos = video_dataset.records
         video_filename = osp.join(self.data_prefix, 'test.mp4')
         assert video_infos == [dict(filename=video_filename, label=0)] * 2
         assert video_dataset.start_index == 0
@@ -420,7 +420,7 @@ class TestDataset(object):
         activitynet_dataset = ActivityNetDataset(self.action_ann_file,
                                                  self.action_pipeline,
                                                  self.data_prefix)
-        activitynet_infos = activitynet_dataset.video_infos
+        activitynet_infos = activitynet_dataset.records
         assert activitynet_infos == [
             dict(
                 video_name='v_test1',

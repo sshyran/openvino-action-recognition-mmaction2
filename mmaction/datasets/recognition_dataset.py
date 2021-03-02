@@ -46,8 +46,8 @@ class RecognitionDataset(BaseDataset, metaclass=ABCMeta):
         elif not isinstance(topk, tuple):
             raise TypeError(f'topk must be int or tuple of int, but got {type(topk)}')
 
-        all_gt_labels = [ann['label'] for ann in self.video_infos]
-        all_dataset_ids = [ann['dataset_id'] for ann in self.video_infos]
+        all_gt_labels = [ann['label'] for ann in self.records]
+        all_dataset_ids = [ann['dataset_id'] for ann in self.records]
 
         split_results, split_gt_labels = defaultdict(list), defaultdict(list)
         for ind, result in enumerate(results):

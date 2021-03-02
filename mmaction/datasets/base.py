@@ -85,13 +85,18 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         if self.logger is not None:
             self.logger.info(f'Pipeline:\n{str(self.pipeline)}')
 
-        video_infos = self._load_annotations(ann_file, data_prefix)
-        video_infos = self._add_dataset_info(video_infos, dataset_id=0, dataset_name=source)
-        video_infos = self._add_kpts_info(video_infos, data_prefix, kpts_prefix, load_kpts)
-        self.video_infos = video_infos
+        records = self._load_annotations(ann_file, data_prefix)
+        records = self._add_dataset_info(records, dataset_id=0, dataset_name=source)
+        records = self._add_kpts_info(records, data_prefix, kpts_prefix, load_kpts)
+        self.records, self.label_maps = self._compress_labels(records)
 
         self.enable_sample_filtering = False
         self.enable_adaptive_mode = False
+
+    @abstractmethod
+    def _load_annotations(self, ann_file, data_prefix):
+        """Load the annotation according to ann_file into video_infos."""
+        pass
 
     @staticmethod
     def _add_dataset_info(records, dataset_id, dataset_name):
@@ -120,10 +125,32 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
         return records
 
-    @abstractmethod
-    def _load_annotations(self, ann_file, data_prefix):
-        """Load the annotation according to ann_file into video_infos."""
-        pass
+    @staticmethod
+    def _compress_labels(records, prev_class_maps=None):
+        all_ids = defaultdict(list)
+        for record in records:
+            dataset_id = record['dataset_id']
+
+            label = record['label']
+            if prev_class_maps is not None:
+                label = prev_class_maps[dataset_id][label]
+                record['label'] = label
+
+            all_ids[dataset_id].append(label)
+
+        new_class_maps, new_class_inv_maps = {}, {}
+        for dataset_id, class_ids in all_ids.items():
+            class_ids = np.unique(class_ids)
+            new_class_maps[dataset_id] = {k: v for k, v in enumerate(sorted(class_ids))}
+            new_class_inv_maps[dataset_id] = {v: k for k, v in new_class_maps[dataset_id].items()}
+
+        for record in records:
+            dataset_id = record['dataset_id']
+
+            old_label = record['label']
+            record['label'] = new_class_inv_maps[dataset_id][old_label]
+
+        return records, new_class_maps
 
     # json annotations already looks like video_infos, so for each dataset,
     # this func should be the same
@@ -192,7 +219,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def prepare_train_frames(self, idx):
         """Prepare the frames for training given the index."""
 
-        results = copy.deepcopy(self.video_infos[idx])
+        results = copy.deepcopy(self.records[idx])
         results['modality'] = self.modality
         results['start_index'] = self.start_index
         results['sample_idx'] = idx
@@ -204,7 +231,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def prepare_test_frames(self, idx):
         """Prepare the frames for testing given the index."""
 
-        results = copy.deepcopy(self.video_infos[idx])
+        results = copy.deepcopy(self.records[idx])
         results['modality'] = self.modality
         results['start_index'] = self.start_index
 
@@ -213,7 +240,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def __len__(self):
         """Get the size of the dataset."""
 
-        return len(self.video_infos)
+        return len(self.records)
 
     def __add__(self, other):
         other_dataset_ids_map = other.dataset_ids_map
@@ -222,9 +249,11 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
         next_dataset_id = max(self.dataset_ids_map.keys()) + 1
         self.dataset_ids_map[next_dataset_id] = other_dataset_ids_map[0]
 
-        for record in other.video_infos:
+        for record in other.records:
             record['dataset_id'] = next_dataset_id
-            self.video_infos.append(record)
+            self.records.append(copy.deepcopy(record))
+
+        self.label_maps[next_dataset_id] = copy.deepcopy(other.label_maps[0])
 
         return self
 
@@ -236,7 +265,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
     def _parse_data(self):
         all_ids = defaultdict(list)
-        for record in self.video_infos:
+        for record in self.records:
             dataset_id = record['dataset_id']
             all_ids[dataset_id].append(record['label'])
 
@@ -297,3 +326,23 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
     def update_meta_info(self, **kwargs):
         pass
+
+    def filter(self, target_class_ids, target_dataset_id=0):
+        assert target_dataset_id in self.dataset_ids_map.keys()
+        assert isinstance(target_class_ids, (tuple, list))
+        assert len(target_class_ids) > 0
+        target_class_ids = set(target_class_ids)
+
+        filtered_records = []
+        for record in self.records:
+            dataset_id = record['dataset_id']
+            if dataset_id != target_dataset_id:
+                filtered_records.append(record)
+                continue
+
+            if record['label'] in target_class_ids:
+                filtered_records.append(record)
+
+        self.records, self.label_maps = self._compress_labels(filtered_records, self.label_maps)
+
+        return self

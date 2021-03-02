@@ -23,8 +23,6 @@ def parse_args():
                         help='checkpoint file')
     parser.add_argument('--data_dir', type=str,
                         help='the dir with dataset')
-    parser.add_argument('--classes', type=str, nargs='+',
-                        help='name of classes in classification dataset')
     parser.add_argument('--out', default=None,
                         help='output result file in pickle format')
     parser.add_argument('--fuse_conv_bn', action='store_true',
@@ -123,6 +121,9 @@ def main():
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
+    if cfg.get('classes', ''):
+        target_class_ids = list(map(int, cfg.classes.split(',')))
+        dataset = dataset.filter(target_class_ids)
     if rank == 0:
         print(f'Test datasets:\n{str(dataset)}')
 
