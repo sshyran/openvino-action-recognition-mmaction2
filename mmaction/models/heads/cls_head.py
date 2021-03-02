@@ -74,12 +74,12 @@ class ClsHead(BaseHead):
                 assert not enable_sampling, 'Re-balancing does not support embd sampling'
                 assert not enable_class_mixing, 'Re-balancing does not support embd mixing'
 
-                self.fc_pre_cls = nn.ModuleList([
+                self.fc_pre_angular = nn.ModuleList([
                     conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
                     for _ in range(rebalance_num_groups)
                 ])
             else:
-                self.fc_pre_cls = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
+                self.fc_pre_angular = conv_1x1x1_bn(self.in_channels, self.embd_size, as_list=False)
 
             if classification_layer == 'linear':
                 self.fc_angular = AngleMultipleLinear(self.embd_size, self.num_classes, num_centers,
@@ -228,7 +228,7 @@ class ClsHead(BaseHead):
 
         if self.with_embedding:
             if self.enable_rebalance:
-                unnorm_embd = [module(x) for module in self.fc_pre_cls]
+                unnorm_embd = [module(x) for module in self.fc_pre_angular]
                 norm_embd = [normalize(embd.view(-1, self.embd_size), dim=1) for embd in unnorm_embd]
                 split_scores = [self.fc_angular(embd) for embd in norm_embd]
 
@@ -237,7 +237,7 @@ class ClsHead(BaseHead):
 
                 extra_cls_score = split_scores
             else:
-                unnorm_embd = self.fc_pre_cls(x)
+                unnorm_embd = self.fc_pre_angular(x)
                 norm_embd = normalize(unnorm_embd.view(-1, self.embd_size), dim=1)
 
                 if self.training:
