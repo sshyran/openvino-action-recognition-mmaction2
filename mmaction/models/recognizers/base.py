@@ -250,7 +250,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
 
             if self.with_self_challenging:
                 trg_features = self._filter(features, trg_mask)
-                trg_main_scores, _ = self._infer_head(
+                trg_main_scores, _, _ = self._infer_head(
                     cl_head,
                     *([trg_features] + head_args),
                     labels=trg_labels.view(-1)
