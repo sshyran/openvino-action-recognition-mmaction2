@@ -188,12 +188,12 @@ def main():
         datasets = [dataset.filter(target_class_ids) for dataset in datasets]
 
     # build model
-    class_sizes = datasets[0].class_sizes()
     model = build_model(
         cfg.model,
         train_cfg=cfg.train_cfg,
         test_cfg=cfg.test_cfg,
-        class_sizes=class_sizes
+        class_sizes=datasets[0].class_sizes,
+        class_maps=datasets[0].class_maps
     )
 
     # define ignore layers

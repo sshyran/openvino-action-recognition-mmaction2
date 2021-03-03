@@ -137,11 +137,18 @@ def main():
     )
 
     # build the model and load checkpoint
-    class_sizes = dataset.class_sizes()
-    model = build_model(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg, class_sizes=class_sizes)
+    model = build_model(
+        cfg.model,
+        train_cfg=None,
+        test_cfg=cfg.test_cfg,
+        class_sizes=dataset.class_sizes,
+        class_maps=dataset.class_maps
+    )
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
+
+    # load model weights
     load_checkpoint(model, args.checkpoint, map_location='cpu', force_matching=True)
 
     if args.fuse_conv_bn:

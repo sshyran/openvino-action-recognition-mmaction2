@@ -53,10 +53,10 @@ def build_head(cfg, class_sizes=None):
             return heads[0]
 
 
-def build_recognizer(cfg, train_cfg=None, test_cfg=None, class_sizes=None):
+def build_recognizer(cfg, train_cfg=None, test_cfg=None, class_sizes=None, class_maps=None):
     """Build recognizer."""
     return build(cfg, RECOGNIZERS,
-                 dict(train_cfg=train_cfg, test_cfg=test_cfg, class_sizes=class_sizes))
+                 dict(train_cfg=train_cfg, test_cfg=test_cfg, class_sizes=class_sizes, class_maps=class_maps))
 
 
 def build_loss(cfg, class_sizes=None):
@@ -73,7 +73,7 @@ def build_localizer(cfg):
     return build(cfg, LOCALIZERS)
 
 
-def build_model(cfg, train_cfg=None, test_cfg=None, class_sizes=None):
+def build_model(cfg, train_cfg=None, test_cfg=None, class_sizes=None, class_maps=None):
     """Build model."""
     args = cfg.copy()
 
@@ -81,7 +81,7 @@ def build_model(cfg, train_cfg=None, test_cfg=None, class_sizes=None):
     if obj_type in LOCALIZERS:
         return build_localizer(cfg)
     elif obj_type in RECOGNIZERS:
-        return build_recognizer(cfg, train_cfg, test_cfg, class_sizes)
+        return build_recognizer(cfg, train_cfg, test_cfg, class_sizes, class_maps)
 
 
 def build_scheduler(cfg):

@@ -319,10 +319,15 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
 
         return [max(list(datasets[dataset_id].keys())) + 1 for dataset_id in sorted(datasets.keys())]
 
+    @property
     def class_sizes(self):
         datasets = self._parse_data()
 
         return [datasets[dataset_id] for dataset_id in sorted(datasets.keys())]
+
+    @property
+    def class_maps(self):
+        return copy.deepcopy(self.label_maps)
 
     def update_meta_info(self, **kwargs):
         pass

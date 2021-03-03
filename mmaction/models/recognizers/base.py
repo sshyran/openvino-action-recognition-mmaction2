@@ -1,3 +1,4 @@
+import copy
 import re
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict, defaultdict
@@ -59,6 +60,7 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
                  cls_head,
                  reducer=None,
                  class_sizes=None,
+                 class_maps=None,
                  train_cfg=None,
                  test_cfg=None,
                  bn_eval=False,
@@ -76,6 +78,8 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.with_clip_mixing = hasattr(train_cfg, 'clip_mixing') and train_cfg.clip_mixing.enable
         self.with_loss_norm = hasattr(train_cfg, 'loss_norm') and train_cfg.loss_norm.enable
         self.with_sample_filtering = hasattr(train_cfg, 'sample_filtering') and train_cfg.sample_filtering.enable
+
+        self.CLASSES = copy.deepcopy(class_maps)
         self.train_meta = {}
 
         self.backbone = builder.build_backbone(backbone)

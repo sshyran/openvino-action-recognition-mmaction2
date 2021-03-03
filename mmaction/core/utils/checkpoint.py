@@ -4,7 +4,15 @@ from mmcv.runner.checkpoint import _load_checkpoint
 from mmcv.runner.dist_utils import get_dist_info
 
 
-def load_state_dict(module, state_dict, strict=False, logger=None, force_matching=False,
+def _is_cls_layer(name):
+    return 'fc_angular' in name or 'fc_cls_out' in name
+
+
+def _get_dataset_id(name):
+    return int(name.split('cls_head.')[-1].split('.')[0])
+
+
+def load_state_dict(module, in_state, class_maps=None, strict=False, logger=None, force_matching=False,
                     show_converted=False, ignore_prefixes=None, ignore_suffixes=None):
     rank, _ = get_dist_info()
 
@@ -14,7 +22,7 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
     shape_casted_pairs = []
 
     own_state = module.state_dict()
-    for name, param in state_dict.items():
+    for name, in_param in in_state.items():
         ignored_prefix = ignore_prefixes is not None and name.startswith(ignore_prefixes)
         ignored_suffix = ignore_suffixes is not None and name.endswith(ignore_suffixes)
         if ignored_prefix or ignored_suffix:
@@ -24,11 +32,14 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
             unexpected_keys.append(name)
             continue
 
-        if isinstance(param, torch.nn.Parameter):
-            param = param.data
+        out_param = own_state[name]
+        if isinstance(out_param, torch.nn.Parameter):
+            out_param = out_param.data
+        if isinstance(in_param, torch.nn.Parameter):
+            in_param = in_param.data
 
-        src_shape = param.size()
-        trg_shape = own_state[name].size()
+        src_shape = in_param.size()
+        trg_shape = out_param.size()
         if src_shape != trg_shape:
             is_valid = False
             if force_matching:
@@ -37,18 +48,34 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
                     is_valid &= src_shape[i] >= trg_shape[i]
 
             if is_valid:
-                ind = [slice(0, d) for d in list(trg_shape)]
-                own_state[name].copy_(param[ind])
+                if not (name.endswith('.weight') or name.endswith('.bias')):
+                    continue
 
-                shape_casted_pairs.append([name, list(own_state[name].size()), list(param.size())])
+                if class_maps is not None and _is_cls_layer(name):
+                    dataset_id = 0
+                    if len(class_maps) > 1:
+                        dataset_id = _get_dataset_id(name)
+                    class_map = class_maps[dataset_id]
+
+                    if 'fc_angular' in name:
+                        for src_id, trg_id in class_map.items():
+                            out_param[:, src_id] = in_param[:, trg_id]
+                    else:
+                        for src_id, trg_id in class_map.items():
+                            out_param[src_id] = in_param[trg_id]
+                else:
+                    ind = [slice(0, d) for d in list(trg_shape)]
+                    out_param.copy_(in_param[ind])
+
+                shape_casted_pairs.append([name, list(out_param.size()), list(in_param.size())])
             else:
-                shape_mismatch_pairs.append([name, list(own_state[name].size()), list(param.size())])
+                shape_mismatch_pairs.append([name, list(out_param.size()), list(in_param.size())])
         else:
-            own_state[name].copy_(param)
+            out_param.copy_(in_param)
             if show_converted:
-                converted_pairs.append([name, list(own_state[name].size())])
+                converted_pairs.append([name, list(out_param.size())])
 
-    missing_keys = list(set(own_state.keys()) - set(state_dict.keys()))
+    missing_keys = list(set(own_state.keys()) - set(in_state.keys()))
 
     err_msg = []
     if unexpected_keys:
@@ -99,11 +126,12 @@ def load_state_dict(module, state_dict, strict=False, logger=None, force_matchin
             logger.warning(warning_msg)
 
 
-def load_checkpoint(model, filename, map_location='cpu', strict=False, logger=None,
+def load_checkpoint(model, filename, map_location='cpu',
+                    strict=False, logger=None,
                     force_matching=False, show_converted=False,
                     ignore_prefixes=None, ignore_suffixes=None):
+    # load checkpoint
     checkpoint = _load_checkpoint(filename, map_location)
-    # OrderedDict is a subclass of dict
     if not isinstance(checkpoint, dict):
         raise RuntimeError(f'No state_dict found in checkpoint file {filename}')
 
@@ -117,8 +145,36 @@ def load_checkpoint(model, filename, map_location='cpu', strict=False, logger=No
     if list(state_dict.keys())[0].startswith('module.'):
         state_dict = {k[7:]: v for k, v in checkpoint['state_dict'].items()}
 
+    # extract model
     model = model.module if hasattr(model, 'module') else model
-    load_state_dict(model, state_dict,
+
+    # load model classes
+    assert hasattr(model, 'CLASSES')
+    assert isinstance(model.CLASSES, dict)
+    model_all_classes = model.CLASSES
+
+    # build class mapping between model.classes and checkpoint.classes
+    if 'meta' in checkpoint and 'CLASSES' in checkpoint['meta']:
+        checkpoint_all_classes = checkpoint['meta']['CLASSES']
+
+        assert set(model_all_classes.keys()).issubset(checkpoint_all_classes.keys()),\
+            f'The model set of datasets is not a subset of checkpoint datasets: ' \
+            f'{model_all_classes.keys()} vs {checkpoint_all_classes.keys()}'
+
+        class_maps = dict()
+        for dataset_id in model_all_classes.keys():
+            model_dataset_classes = model_all_classes[dataset_id]
+            checkpoint_dataset_classes = checkpoint_all_classes[dataset_id]
+            assert set(model_dataset_classes.values()).issubset(checkpoint_dataset_classes.values()), \
+                f'The model set of classes is not a subset of checkpoint classes'
+
+            checkpoint_inv_class_map = {v: k for k, v in checkpoint_dataset_classes.items()}
+            class_maps[dataset_id] = {k: checkpoint_inv_class_map[v] for k, v in model_dataset_classes.items()}
+    else:
+        class_maps = model_all_classes
+
+    # load weights
+    load_state_dict(model, state_dict, class_maps,
                     strict, logger, force_matching, show_converted,
                     ignore_prefixes, ignore_suffixes)
 
