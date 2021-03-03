@@ -110,11 +110,23 @@ def main(args):
         cfg.merge_from_dict(args.update_config)
     cfg.data.videos_per_gpu = 1
 
-    net = build_recognizer(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    net.eval()
-    load_checkpoint(net, args.checkpoint, force_matching=True)
-    if hasattr(net, 'forward_inference'):
-        net.forward = net.forward_inference
+    class_maps = None
+    if cfg.get('classes', ''):
+        target_class_ids = map(int, cfg.classes.split(','))
+        class_maps = {0: {k: v for k, v in enumerate(sorted(target_class_ids))}}
+
+    model = build_recognizer(
+        cfg.model,
+        train_cfg=None,
+        test_cfg=cfg.test_cfg,
+        class_maps=class_maps
+    )
+
+    model.eval()
+
+    load_checkpoint(model, args.checkpoint, force_matching=True)
+    if hasattr(model, 'forward_inference'):
+        model.forward = model.forward_inference
 
     input_time_size = cfg.input_clip_length
     input_image_size = (tuple(cfg.input_img_size)
@@ -127,7 +139,7 @@ def main(args):
     if not exists(base_output_dir):
         makedirs(base_output_dir)
 
-    convert_to_onnx(net, input_size, onnx_model_path, opset=args.opset, check=True)
+    convert_to_onnx(model, input_size, onnx_model_path, opset=args.opset, check=True)
 
     if args.target == 'openvino':
         input_shape = (1,) + input_size

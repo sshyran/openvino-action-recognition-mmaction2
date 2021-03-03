@@ -79,7 +79,12 @@ class BaseRecognizer(nn.Module, metaclass=ABCMeta):
         self.with_loss_norm = hasattr(train_cfg, 'loss_norm') and train_cfg.loss_norm.enable
         self.with_sample_filtering = hasattr(train_cfg, 'sample_filtering') and train_cfg.sample_filtering.enable
 
-        self.CLASSES = copy.deepcopy(class_maps)
+        if class_maps is None:
+            num_classes = cls_head.num_classes
+            self.CLASSES = {0: {ii: ii for ii in range(num_classes)}}
+        else:
+            self.CLASSES = copy.deepcopy(class_maps)
+
         self.train_meta = {}
 
         self.backbone = builder.build_backbone(backbone)

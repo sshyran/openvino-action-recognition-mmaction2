@@ -142,6 +142,11 @@ def main(args):
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
+    num_classes = cfg.model.cls_head.num_classes
+    if cfg.get('classes', ''):
+        target_class_ids = list(map(int, cfg.classes.split(',')))
+        dataset = dataset.filter(target_class_ids)
+        num_classes = max(dataset.class_maps[0].keys()) + 1
     print(f'Test datasets:\n{str(dataset)}')
 
     # build the dataloader
@@ -155,7 +160,7 @@ def main(args):
 
     # load model
     ie_core = load_ie_core()
-    model = ActionRecognizer(args.model, ie_core, cfg.model.cls_head.num_classes)
+    model = ActionRecognizer(args.model, ie_core, num_classes)
 
     # collect results
     outputs = collect_results(model, data_loader)
