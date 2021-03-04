@@ -1,5 +1,6 @@
 import sys
 import argparse
+import json
 from os import makedirs
 from os.path import exists, dirname, basename, splitext, join
 from subprocess import run, CalledProcessError, DEVNULL
@@ -90,6 +91,7 @@ def parse_args():
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help="path to file with model's weights")
     parser.add_argument('output_dir', help='path to directory to save exported models in')
+    parser.add_argument('meta_info', help='path to file to save meta info in')
     parser.add_argument('--opset', type=int, default=10, help='ONNX opset')
     parser.add_argument('--update_config', nargs='+', action=ExtendedDictAction,
                         help='Update configuration file by parameters specified here.')
@@ -111,7 +113,7 @@ def main(args):
     cfg.data.videos_per_gpu = 1
 
     class_maps = None
-    if cfg.get('classes', ''):
+    if cfg.get('classes'):
         target_class_ids = map(int, cfg.classes.split(','))
         class_maps = {0: {k: v for k, v in enumerate(sorted(target_class_ids))}}
 
@@ -144,6 +146,10 @@ def main(args):
     if args.target == 'openvino':
         input_shape = (1,) + input_size
         export_to_openvino(cfg, onnx_model_path, args.output_dir, input_shape, args.input_format)
+
+    meta = {'model_classes': model.CLASSES}
+    with open(args.meta_info, 'w') as output_meta_stream:
+        json.dump(meta, output_meta_stream)
 
 
 if __name__ == '__main__':

@@ -14,6 +14,7 @@
 
 import sys
 import argparse
+import json
 
 import mmcv
 from openvino.inference_engine import IECore  # pylint: disable=no-name-in-module
@@ -52,6 +53,19 @@ def merge_configs(cfg1, cfg2):
             cfg1[k] = v
 
     return cfg1
+
+
+def build_class_map(dataset_classes, model_classes):
+    assert len(dataset_classes) == 1
+
+    dataset_class_map = dataset_classes[0]
+
+    model_class_map = model_classes[0]
+    model_inv_class_map = {v: k for k, v in model_class_map.items()}
+
+    out_class_map = {k: model_inv_class_map[v] for k, v in dataset_class_map.items()}
+
+    return out_class_map
 
 
 def collect_results(model, data_loader):
@@ -106,17 +120,14 @@ class IEModel:
 
 
 class ActionRecognizer(IEModel):
-    def __init__(self, model_path, ie_core, num_classes, device='CPU', num_requests=1):
+    def __init__(self, model_path, ie_core, class_map, device='CPU', num_requests=1):
         super().__init__(model_path, ie_core, device, num_requests)
 
-        self.num_test_classes = num_classes
+        self.class_ids = [class_map[k] for k in sorted(class_map.keys())]
 
     def __call__(self, input_data):
-        result = self.infer(input_data)
-
-        num_classes = result.shape[-1]
-        if num_classes > self.num_test_classes:
-            result = result[:self.num_test_classes]
+        raw_output = self.infer(input_data)
+        result = raw_output[self.class_ids]
 
         return result
 
@@ -142,11 +153,9 @@ def main(args):
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
-    num_classes = cfg.model.cls_head.num_classes
-    if cfg.get('classes', ''):
+    if cfg.get('classes'):
         target_class_ids = list(map(int, cfg.classes.split(',')))
         dataset = dataset.filter(target_class_ids)
-        num_classes = max(dataset.class_maps[0].keys()) + 1
     print(f'Test datasets:\n{str(dataset)}')
 
     # build the dataloader
@@ -158,9 +167,16 @@ def main(args):
         shuffle=False
     )
 
+    # load model classes info
+    assert cfg.get('model_classes') is not None
+    model_classes = json.loads(cfg.model_classes)
+
+    # build class mapping between model.classes and dataset.classes
+    class_map = build_class_map(dataset.class_maps, model_classes)
+
     # load model
     ie_core = load_ie_core()
-    model = ActionRecognizer(args.model, ie_core, num_classes)
+    model = ActionRecognizer(args.model, ie_core, class_map)
 
     # collect results
     outputs = collect_results(model, data_loader)

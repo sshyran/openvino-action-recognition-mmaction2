@@ -183,7 +183,7 @@ def main():
         logger.info(f'Val datasets:\n{str(datasets[-1])}')
 
     # filter dataset labels
-    if cfg.get('classes', ''):
+    if cfg.get('classes'):
         target_class_ids = list(map(int, cfg.classes.split(',')))
         datasets = [dataset.filter(target_class_ids) for dataset in datasets]
 
