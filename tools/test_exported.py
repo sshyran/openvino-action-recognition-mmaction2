@@ -120,7 +120,7 @@ class ActionRecognizer(IEModel):
 
     def __call__(self, input_data):
         raw_output = self.infer(input_data)
-        result = raw_output[self.class_ids]
+        result = raw_output[:, self.class_ids]
 
         return result
 
