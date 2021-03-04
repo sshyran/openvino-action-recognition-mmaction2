@@ -147,7 +147,7 @@ def main(args):
         input_shape = (1,) + input_size
         export_to_openvino(cfg, onnx_model_path, args.output_dir, input_shape, args.input_format)
 
-    meta = {'model_classes': model.CLASSES}
+    meta = {'model_classes': model.CLASSES[0]}
     with open(args.meta_info, 'w') as output_meta_stream:
         json.dump(meta, output_meta_stream)
 

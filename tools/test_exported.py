@@ -14,7 +14,6 @@
 
 import sys
 import argparse
-import json
 
 import mmcv
 from openvino.inference_engine import IECore  # pylint: disable=no-name-in-module
@@ -153,6 +152,7 @@ def main(args):
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
+    assert dataset.num_datasets == 1
     if cfg.get('classes'):
         target_class_ids = list(map(int, cfg.classes.split(',')))
         dataset = dataset.filter(target_class_ids)
@@ -167,12 +167,10 @@ def main(args):
         shuffle=False
     )
 
-    # load model classes info
-    assert cfg.get('model_classes') is not None
-    model_classes = json.loads(cfg.model_classes)
-
     # build class mapping between model.classes and dataset.classes
-    class_map = build_class_map(dataset.class_maps, model_classes)
+    assert cfg.get('model_classes') is not None
+    model_classes = {k: int(v) for k, v in enumerate(cfg.model_classes.split(','))}
+    class_map = build_class_map(dataset.class_maps[0], model_classes)
 
     # load model
     ie_core = load_ie_core()

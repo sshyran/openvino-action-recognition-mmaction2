@@ -329,6 +329,10 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
     def class_maps(self):
         return copy.deepcopy(self.label_maps)
 
+    @property
+    def num_datasets(self):
+        return len(self.dataset_ids_map)
+
     def update_meta_info(self, **kwargs):
         pass
 
