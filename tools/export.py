@@ -114,8 +114,7 @@ def main(args):
 
     class_maps = None
     if cfg.get('classes'):
-        target_class_ids = map(int, cfg.classes.split(','))
-        class_maps = {0: {k: v for k, v in enumerate(sorted(target_class_ids))}}
+        class_maps = {0: {k: v for k, v in enumerate(sorted(cfg.classes))}}
 
     model = build_recognizer(
         cfg.model,

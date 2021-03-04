@@ -122,8 +122,7 @@ def main():
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
     if cfg.get('classes'):
-        target_class_ids = list(map(int, cfg.classes.split(',')))
-        dataset = dataset.filter(target_class_ids)
+        dataset = dataset.filter(cfg.classes)
     if rank == 0:
         print(f'Test datasets:\n{str(dataset)}')
 

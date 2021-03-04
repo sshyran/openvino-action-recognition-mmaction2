@@ -154,8 +154,7 @@ def main(args):
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
     assert dataset.num_datasets == 1
     if cfg.get('classes'):
-        target_class_ids = list(map(int, cfg.classes.split(',')))
-        dataset = dataset.filter(target_class_ids)
+        dataset = dataset.filter(cfg.classes)
     print(f'Test datasets:\n{str(dataset)}')
 
     # build the dataloader
@@ -169,7 +168,7 @@ def main(args):
 
     # build class mapping between model.classes and dataset.classes
     assert cfg.get('model_classes') is not None
-    model_classes = {k: int(v) for k, v in enumerate(cfg.model_classes.split(','))}
+    model_classes = {k: v for k, v in enumerate(cfg.model_classes)}
     class_map = build_class_map(dataset.class_maps[0], model_classes)
 
     # load model

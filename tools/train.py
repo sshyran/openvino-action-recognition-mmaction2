@@ -184,8 +184,7 @@ def main():
 
     # filter dataset labels
     if cfg.get('classes'):
-        target_class_ids = list(map(int, cfg.classes.split(',')))
-        datasets = [dataset.filter(target_class_ids) for dataset in datasets]
+        datasets = [dataset.filter(cfg.classes) for dataset in datasets]
 
     # build model
     model = build_model(
