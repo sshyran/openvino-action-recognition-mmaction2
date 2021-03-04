@@ -55,14 +55,8 @@ def merge_configs(cfg1, cfg2):
 
 
 def build_class_map(dataset_classes, model_classes):
-    assert len(dataset_classes) == 1
-
-    dataset_class_map = dataset_classes[0]
-
-    model_class_map = model_classes[0]
-    model_inv_class_map = {v: k for k, v in model_class_map.items()}
-
-    out_class_map = {k: model_inv_class_map[v] for k, v in dataset_class_map.items()}
+    model_inv_class_map = {v: k for k, v in model_classes.items()}
+    out_class_map = {k: model_inv_class_map[v] for k, v in dataset_classes.items()}
 
     return out_class_map
 
