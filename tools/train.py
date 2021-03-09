@@ -162,13 +162,11 @@ def main():
     logger.info(f'Config: {cfg.text}')
 
     # set random seeds
-    if args.seed is not None:
-        logger.info('Set random seed to {}, deterministic: {}'.format(
-            args.seed, args.deterministic)
-        )
-        set_random_seed(args.seed, deterministic=args.deterministic)
     cfg.seed = args.seed
     meta['seed'] = args.seed
+    if cfg.seed is not None:
+        logger.info(f'Set random seed to {cfg.seed}, deterministic: {args.deterministic}')
+        set_random_seed(cfg.seed, deterministic=args.deterministic)
 
     # build datasets
     datasets = [build_dataset(cfg.data, 'train', dict(logger=logger))]

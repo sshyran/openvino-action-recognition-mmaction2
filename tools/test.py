@@ -5,7 +5,7 @@ import mmcv
 import torch
 from mmcv.cnn import fuse_conv_bn
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import get_dist_info, init_dist
+from mmcv.runner import get_dist_info, init_dist, set_random_seed
 from mmcv.runner.fp16_utils import wrap_fp16_model
 
 from mmaction.apis import multi_gpu_test, single_gpu_test
@@ -117,7 +117,12 @@ def main():
     if distributed:
         init_dist(args.launcher, **cfg.dist_params)
 
+    # get rank
     rank, _ = get_dist_info()
+
+    if cfg.seed is not None:
+        print(f'Set random seed to {cfg.seed}')
+        set_random_seed(cfg.seed)
 
     # build the dataset
     dataset = build_dataset(cfg.data, 'test', dict(test_mode=True))
