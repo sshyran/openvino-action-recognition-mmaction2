@@ -8,6 +8,7 @@ from subprocess import run, CalledProcessError, DEVNULL
 import torch
 import onnx
 import mmcv
+from mmcv.runner import set_random_seed
 
 from mmaction.models import build_recognizer
 from mmaction.core import load_checkpoint
@@ -111,6 +112,10 @@ def main(args):
     if args.update_config is not None:
         cfg.merge_from_dict(args.update_config)
     cfg.data.videos_per_gpu = 1
+
+    if cfg.seed is not None:
+        print(f'Set random seed to {cfg.seed}')
+        set_random_seed(cfg.seed)
 
     class_maps = None
     if cfg.get('classes'):
