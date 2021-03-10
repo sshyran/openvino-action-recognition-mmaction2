@@ -164,7 +164,7 @@ def main():
     # set random seeds
     cfg.seed = args.seed
     meta['seed'] = args.seed
-    if cfg.seed is not None:
+    if cfg.get('seed'):
         logger.info(f'Set random seed to {cfg.seed}, deterministic: {args.deterministic}')
         set_random_seed(cfg.seed, deterministic=args.deterministic)
 

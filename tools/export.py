@@ -113,7 +113,7 @@ def main(args):
         cfg.merge_from_dict(args.update_config)
     cfg.data.videos_per_gpu = 1
 
-    if cfg.seed is not None:
+    if cfg.get('seed'):
         print(f'Set random seed to {cfg.seed}')
         set_random_seed(cfg.seed)
 

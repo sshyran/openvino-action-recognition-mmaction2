@@ -120,7 +120,7 @@ def main():
     # get rank
     rank, _ = get_dist_info()
 
-    if cfg.seed is not None:
+    if cfg.get('seed'):
         print(f'Set random seed to {cfg.seed}')
         set_random_seed(cfg.seed)
 
